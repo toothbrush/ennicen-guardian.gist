@@ -7,7 +7,57 @@
 // @description  block junk
 // @author       toothbrush
 // @match        https://www.theguardian.com/au
-// @match        https://www.theguardian.com/international
+// @match        https://www.theguardian.com/international*
 // @match        https://www.theguardian.com/us
 // @run-at       document-idle
 // ==/UserScript==
+
+const boring_topics = [ // list of regexen
+    /\bElon\b/,
+    /\bJoe Rogan\b/,
+    /\bTwitter\b/,
+];
+
+const paul_hide = `.paul_hide { background: purple !important; visibility: hidden !important; }`
+
+function GM_addStyle(css) {
+  const style = document.getElementById("GM_addStyleBy8626") || (function() {
+    const style = document.createElement('style');
+    style.type = 'text/css';
+    style.id = "GM_addStyleBy8626";
+    document.head.appendChild(style);
+    return style;
+  })();
+  const sheet = style.sheet;
+  sheet.insertRule(css, (sheet.rules || sheet.cssRules || []).length);
+}
+
+(function() {
+    'use strict';
+    console.log("Hi Guardian");
+    GM_addStyle(paul_hide);
+    GM_addStyle("#sport { display: none; }");
+    GM_addStyle(".morning-mail-thrasher__layout { display: none; }");
+    GM_addStyle("#guardian-labs { display: none; }");
+    GM_addStyle("#coronavirus-data { display: none; }");
+    GM_addStyle(".thrasher-inner { display: none; }");
+
+    var athings = document.getElementsByClassName("fc-item__container");
+
+    [].forEach.call(athings, function (thing) {
+        var actual_title = (thing.innerText || thing.textContent);
+
+        var is_boring = false;
+        [].forEach.call(boring_topics, function (topic) {
+            if(actual_title.match(topic)) {
+                is_boring = true;
+            }
+        });
+
+        if(is_boring) {
+            thing.classList.add("paul_hide");
+            thing.parentNode.style.backgroundColor = "blue";
+            thing.parentNode.style.opacity = 0;
+        };
+    });
+})();
