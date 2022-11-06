@@ -3,12 +3,10 @@
 // @namespace    https://gist.github.com/toothbrush/f7426d7fbb46e621bf1aa4146af64cf8
 // @updateURL    https://gist.githubusercontent.com/toothbrush/f7426d7fbb46e621bf1aa4146af64cf8/raw/ennicen-guardian.user.js
 // @downloadURL  https://gist.githubusercontent.com/toothbrush/f7426d7fbb46e621bf1aa4146af64cf8/raw/ennicen-guardian.user.js
-// @version      0.1
+// @version      0.2
 // @description  block junk
 // @author       toothbrush
-// @match        https://www.theguardian.com/au
-// @match        https://www.theguardian.com/international*
-// @match        https://www.theguardian.com/us
+// @match        https://www.theguardian.com/*
 // @run-at       document-idle
 // ==/UserScript==
 
@@ -60,4 +58,22 @@ function GM_addStyle(css) {
             thing.parentNode.style.opacity = 0;
         };
     });
+
+    document.querySelectorAll(`[data-spacefinder-type='model.dotcomrendering.pageElements.NewsletterSignupBlockElement']`).forEach(element => {
+        element.classList.add("paul_hide");
+    });
+
+    document.querySelectorAll(`[data-gu-name='standfirst']`).forEach(element => {
+        element.classList.add("paul_hide");
+    });
+
+    document.querySelectorAll(`gu-island[name='SlotBodyEnd']`).forEach(element => {
+        element.classList.add("paul_hide");
+    });
+
+    document.querySelectorAll(`gu-island[name='InteractiveBlockComponent']`).forEach(element => {
+        element.classList.add("paul_hide");
+    });
+
+
 })();
