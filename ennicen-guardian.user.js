@@ -3,7 +3,7 @@
 // @namespace    https://gist.github.com/toothbrush/f7426d7fbb46e621bf1aa4146af64cf8
 // @updateURL    https://gist.githubusercontent.com/toothbrush/f7426d7fbb46e621bf1aa4146af64cf8/raw/ennicen-guardian.user.js
 // @downloadURL  https://gist.githubusercontent.com/toothbrush/f7426d7fbb46e621bf1aa4146af64cf8/raw/ennicen-guardian.user.js
-// @version      0.2
+// @version      0.3
 // @description  block junk
 // @author       toothbrush
 // @match        https://www.theguardian.com/*
@@ -38,6 +38,7 @@ function GM_addStyle(css) {
     GM_addStyle(".morning-mail-thrasher__layout { display: none; }");
     GM_addStyle("#guardian-labs { display: none; }");
     GM_addStyle("#coronavirus-data { display: none; }");
+    GM_addStyle("#world-cup-2022 { display: none; }");
     GM_addStyle(".thrasher-inner { display: none; }");
 
     var athings = document.getElementsByClassName("fc-item__container");
