@@ -3,10 +3,11 @@
 // @namespace    https://gist.github.com/toothbrush/f7426d7fbb46e621bf1aa4146af64cf8
 // @updateURL    https://gist.githubusercontent.com/toothbrush/f7426d7fbb46e621bf1aa4146af64cf8/raw/ennicen-guardian.user.js
 // @downloadURL  https://gist.githubusercontent.com/toothbrush/f7426d7fbb46e621bf1aa4146af64cf8/raw/ennicen-guardian.user.js
-// @version      0.6
+// @version      0.7
 // @description  block junk
 // @author       toothbrush
 // @match        https://www.theguardian.com/*
+// @exclude      https://www.theguardian.com/commentisfree/*
 // @run-at       document-idle
 // ==/UserScript==
 
