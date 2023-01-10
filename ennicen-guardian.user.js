@@ -3,7 +3,7 @@
 // @namespace    https://gist.github.com/toothbrush/f7426d7fbb46e621bf1aa4146af64cf8
 // @updateURL    https://gist.githubusercontent.com/toothbrush/f7426d7fbb46e621bf1aa4146af64cf8/raw/ennicen-guardian.user.js
 // @downloadURL  https://gist.githubusercontent.com/toothbrush/f7426d7fbb46e621bf1aa4146af64cf8/raw/ennicen-guardian.user.js
-// @version      0.7
+// @version      0.8
 // @description  block junk
 // @author       toothbrush
 // @match        https://www.theguardian.com/*
@@ -14,6 +14,8 @@
 const boring_topics = [ // list of regexen
     /\bElon\b/,
     /\bJoe Rogan\b/,
+    /\bPrince Harry\b/,
+    /\bPrince William\b/,
     /\bTwitter\b/,
     /\bfootball\b/,
     /\bfootballer\b/,
