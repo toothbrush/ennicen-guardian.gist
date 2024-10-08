@@ -56,6 +56,7 @@ function GM_addStyle(css) {
     GM_addStyle("footer { display: none; }");
     GM_addStyle("section#trending-topics { display: none; }");
     GM_addStyle("section#most-viewed-in-australia-news { display: none; }");
+    GM_addStyle("section#most-viewed { display: none; }");
     GM_addStyle("section#video { display: none; }");
     GM_addStyle("section#videos { display: none; }");
     GM_addStyle("section#contact-the-guardian { display: none; }");
