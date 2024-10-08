@@ -3,7 +3,7 @@
 // @namespace    https://gist.github.com/toothbrush/f7426d7fbb46e621bf1aa4146af64cf8
 // @updateURL    https://gist.githubusercontent.com/toothbrush/f7426d7fbb46e621bf1aa4146af64cf8/raw/ennicen-guardian.user.js
 // @downloadURL  https://gist.githubusercontent.com/toothbrush/f7426d7fbb46e621bf1aa4146af64cf8/raw/ennicen-guardian.user.js
-// @version      0.9
+// @version      0.10
 // @description  block junk
 // @author       toothbrush
 // @match        https://www.theguardian.com/*
@@ -48,7 +48,18 @@ function GM_addStyle(css) {
     GM_addStyle("#guardian-labs { display: none; }");
     GM_addStyle("#coronavirus-data { display: none; }");
     GM_addStyle("#world-cup-2022 { display: none; }");
+    GM_addStyle("div.securedrop { display: none; }");
     GM_addStyle(".thrasher-inner { display: none; }");
+    GM_addStyle(".the-rural-network { display: none; }");
+    GM_addStyle("section#the-rural-network { display: none; }");
+    GM_addStyle("header { display: none; }");
+    GM_addStyle("footer { display: none; }");
+    GM_addStyle("section#trending-topics { display: none; }");
+    GM_addStyle("section#most-viewed-in-australia-news { display: none; }");
+    GM_addStyle("section#video { display: none; }");
+    GM_addStyle("section#videos { display: none; }");
+    GM_addStyle("section#contact-the-guardian { display: none; }");
+    GM_addStyle("gu-island[name='SubNav'] { display: none; }");
 
     var athings = document.getElementsByClassName("fc-item__container");
 
