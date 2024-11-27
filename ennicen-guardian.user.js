@@ -62,6 +62,7 @@ function GM_addStyle(css) {
     GM_addStyle("section#contact-the-guardian { display: none; }");
     GM_addStyle("gu-island[name='SubNav'] { display: none; }");
     GM_addStyle("div.gu-overlay { display: none; }");
+    GM_addStyle("gu-island[name='AuEoy2024Wrapper'] { display: none; }");
 
     var athings = document.getElementsByClassName("fc-item__container");
 
