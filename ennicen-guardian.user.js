@@ -3,7 +3,7 @@
 // @namespace    https://github.com/toothbrush/ennicen-guardian.gist
 // @updateURL    https://raw.githack.com/toothbrush/ennicen-guardian.gist/main/ennicen-guardian.user.js
 // @downloadURL  https://raw.githack.com/toothbrush/ennicen-guardian.gist/main/ennicen-guardian.user.js
-// @version      0.23
+// @version      0.24
 // @description  block junk
 // @author       toothbrush
 // @match        https://www.theguardian.com/*
@@ -83,7 +83,19 @@ function GM_addStyle(css) {
   sheet.insertRule(css, (sheet.rules || sheet.cssRules || []).length);
 }
 
-/* ---------- GM API shims (degrade gracefully on hosts missing an API) ---------- */
+/* ---------- GM API shims ----------
+ * Hosts vary in which GM_* APIs they expose. iOS Safari "Userscripts" provides
+ * GM[_.]xmlhttpRequest but NOT the sync GM_* storage/menu APIs. These wrappers
+ * degrade gracefully: a missing storage API just means "no persistent cache on
+ * this device" (each load re-fetches) rather than a ReferenceError that aborts
+ * the whole script. Callers must tolerate a storage miss — see refreshIfStale,
+ * which applies fetched content directly instead of re-reading.
+ *
+ * Net effect on a token-less client (e.g. iOS): the read path below still fetches
+ * and applies rules.txt, while the write path (zapper + badge) stays dormant
+ * because it is gated behind canWrite(). So such a device just evaluates the
+ * blocklist, which is all it needs to do.
+ */
 
 function gmGet(key, def) {
     try { if (typeof GM_getValue === "function") return GM_getValue(key, def); } catch (e) {}
@@ -677,4 +689,5 @@ registerMenu("Toggle zapper (⌥ to zap)", function () {
 
 loadEffectiveRules();   // synchronous, from cache: hide immediately, no flash
 refreshIfStale();       // async: pull latest rules.txt, re-apply
+// Write path only — skipped on a token-less client (e.g. iOS), which read-applies above.
 if (canWrite() && hoverMuteEnabled()) enableHoverMute();
