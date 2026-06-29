@@ -3,7 +3,7 @@
 // @namespace    https://github.com/toothbrush/ennicen-guardian.gist
 // @updateURL    https://raw.githack.com/toothbrush/ennicen-guardian.gist/main/ennicen-guardian.user.js
 // @downloadURL  https://raw.githack.com/toothbrush/ennicen-guardian.gist/main/ennicen-guardian.user.js
-// @version      0.21
+// @version      0.22
 // @description  block junk
 // @author       toothbrush
 // @match        https://www.theguardian.com/*
@@ -373,7 +373,7 @@ function findCandidate(start) {
 /* ---------- hover affordance: highlight + floating [mute] pill ---------- */
 
 let highlightEl = null, muteBtn = null, keepBtn = null, muteName = null, keepName = null;
-let currentSelector = null, hideTimer = null, rafPending = false;
+let currentSelector = null, currentTargetEl = null, hideTimer = null, rafPending = false;
 
 function pillStyle(bg) {
     return "position:fixed;z-index:2147483647;display:none;cursor:pointer;color:#fff;border:none;" +
@@ -409,29 +409,37 @@ function ensureAffordance() {
     keepBtn = keep.btn; keepName = keep.name;
 }
 
-function showAffordanceFor(el, sel) {
-    clearTimeout(hideTimer);
-    currentSelector = sel;
-    const r = el.getBoundingClientRect();
+// Lay the highlight + pills onto the current target's current rect. Cheap enough
+// to call on scroll; reads currentTargetEl so positions track the block.
+function repositionAffordance() {
+    if (!currentTargetEl) return;
+    const r = currentTargetEl.getBoundingClientRect();
     highlightEl.style.top = r.top + "px";
     highlightEl.style.left = r.left + "px";
     highlightEl.style.width = r.width + "px";
     highlightEl.style.height = r.height + "px";
-    highlightEl.style.display = "block";
 
     // Both pills right-aligned to the block's right edge, stacked: mute, then keep.
-    muteName.textContent = sel;
-    keepName.textContent = sel;
     const right = Math.max(2, window.innerWidth - r.right) + "px";
     const top = Math.max(2, r.top + 4);
     muteBtn.style.left = "auto";
     muteBtn.style.right = right;
     muteBtn.style.top = top + "px";
-    muteBtn.style.display = "block";
     keepBtn.style.left = "auto";
     keepBtn.style.right = right;
     keepBtn.style.top = (top + muteBtn.offsetHeight + 4) + "px"; // offsetHeight valid now it's shown
+}
+
+function showAffordanceFor(el, sel) {
+    clearTimeout(hideTimer);
+    currentTargetEl = el;
+    currentSelector = sel;
+    muteName.textContent = sel;
+    keepName.textContent = sel;
+    highlightEl.style.display = "block";
+    muteBtn.style.display = "block";
     keepBtn.style.display = "block";
+    repositionAffordance();
 }
 
 function hideAffordance() {
@@ -440,22 +448,43 @@ function hideAffordance() {
     muteBtn.style.display = "none";
     keepBtn.style.display = "none";
     currentSelector = null;
+    currentTargetEl = null;
+}
+
+function pointInRect(x, y, r) {
+    return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
 }
 
 function onMouseMove(e) {
-    if (e.target === muteBtn || e.target === keepBtn) return; // hovering a pill: keep current
+    if (e.target === muteBtn || e.target === keepBtn) { clearTimeout(hideTimer); return; } // over a pill
+    // Stay locked to the current block while the cursor remains inside it (the
+    // pills sit in its top-right corner, so reaching them keeps us inside). This
+    // is what stops the jitter — we only retarget when the cursor actually leaves.
+    if (currentTargetEl && currentTargetEl.isConnected &&
+        pointInRect(e.clientX, e.clientY, currentTargetEl.getBoundingClientRect())) {
+        clearTimeout(hideTimer);
+        return;
+    }
     if (rafPending) return;
     rafPending = true;
     const target = e.target;
     requestAnimationFrame(function () {
         rafPending = false;
         const cand = findCandidate(target);
-        if (cand) showAffordanceFor(cand.el, cand.sel);
-        else { clearTimeout(hideTimer); hideTimer = setTimeout(hideAffordance, 150); }
+        if (cand) { if (cand.el !== currentTargetEl) showAffordanceFor(cand.el, cand.sel); }
+        else { clearTimeout(hideTimer); hideTimer = setTimeout(hideAffordance, 200); }
     });
 }
 
-function onScrollOrResize() { hideAffordance(); } // rects go stale on scroll; reappears on next move
+// Keep the pills pinned to the block as the page scrolls, rather than flickering
+// off; drop them only if the block scrolls fully out of view.
+function onScrollOrResize() {
+    if (!currentTargetEl) return;
+    if (!currentTargetEl.isConnected) { hideAffordance(); return; }
+    const r = currentTargetEl.getBoundingClientRect();
+    if (r.bottom < 0 || r.top > window.innerHeight) hideAffordance();
+    else repositionAffordance();
+}
 
 function enableHoverMute() {
     if (!canWrite()) return;
