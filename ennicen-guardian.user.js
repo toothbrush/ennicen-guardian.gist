@@ -3,7 +3,7 @@
 // @namespace    https://gist.github.com/toothbrush/f7426d7fbb46e621bf1aa4146af64cf8
 // @updateURL    https://gist.githubusercontent.com/toothbrush/f7426d7fbb46e621bf1aa4146af64cf8/raw/ennicen-guardian.user.js
 // @downloadURL  https://gist.githubusercontent.com/toothbrush/f7426d7fbb46e621bf1aa4146af64cf8/raw/ennicen-guardian.user.js
-// @version      0.12
+// @version      0.13
 // @description  block junk
 // @author       toothbrush
 // @match        https://www.theguardian.com/*
@@ -63,6 +63,7 @@ function GM_addStyle(css) {
     GM_addStyle("gu-island[name='SubNav'] { display: none; }");
     GM_addStyle("div.gu-overlay { display: none; }");
     GM_addStyle("gu-island[name='AuEoy2024Wrapper'] { display: none; }");
+    GM_addStyle("gu-island[name='StickyBottomBanner'] { display: none; }");
 
     var athings = document.getElementsByClassName("fc-item__container");
 
