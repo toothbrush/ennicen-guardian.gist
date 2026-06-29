@@ -3,7 +3,7 @@
 // @namespace    https://github.com/toothbrush/ennicen-guardian.gist
 // @updateURL    https://raw.githubusercontent.com/toothbrush/ennicen-guardian.gist/main/ennicen-guardian.user.js
 // @downloadURL  https://raw.githubusercontent.com/toothbrush/ennicen-guardian.gist/main/ennicen-guardian.user.js
-// @version      0.16
+// @version      0.17
 // @description  block junk
 // @author       toothbrush
 // @match        https://www.theguardian.com/*
@@ -180,7 +180,9 @@ function ghApi(method, body, cb) {
                 try { cb(null, JSON.parse(res.responseText)); }
                 catch (e) { cb(new Error("bad JSON from GitHub")); }
             } else {
-                cb(new Error("GitHub " + res.status));
+                const e = new Error("GitHub " + res.status);
+                e.status = res.status;
+                cb(e);
             }
         },
         onerror: function () { cb(new Error("network error")); },
@@ -194,8 +196,12 @@ function b64decode(b64) { return decodeURIComponent(escape(atob(b64.replace(/\n/
 
 // GET authoritative content+sha -> transform -> PUT with a commit message.
 // transform returns null to skip the write. The PUT's optimistic-concurrency sha
-// guards against clobbering a write from another device between GET and PUT.
-function mutateRules(message, transform, cb) {
+// guards against clobbering a write from another device between GET and PUT; a
+// 409 means our sha went stale (a concurrent write landed), so we re-GET and
+// re-run the transform against fresh content rather than clobber it.
+const MUTATE_MAX_RETRIES = 4;
+function mutateRules(message, transform, cb, attempt) {
+    attempt = attempt || 0;
     ghApi("GET", null, function (err, file) {
         if (err) return cb(err);
         const content = file && file.content ? b64decode(file.content) : "";
@@ -208,7 +214,13 @@ function mutateRules(message, transform, cb) {
         };
         if (file && file.sha) body.sha = file.sha; // omit only when creating the file
         ghApi("PUT", body, function (err2) {
-            if (err2) return cb(err2);
+            if (err2) {
+                if (err2.status === 409 && attempt < MUTATE_MAX_RETRIES) {
+                    setTimeout(function () { mutateRules(message, transform, cb, attempt + 1); }, 250 * (attempt + 1));
+                    return;
+                }
+                return cb(err2);
+            }
             cacheRules(newContent);
             cb(null);
         });
