@@ -12,3 +12,4 @@ section#world-cup-2026
 section#what-to-play
 section#fashion-\&-beauty
 section#newsletters
+section#secure-messaging
