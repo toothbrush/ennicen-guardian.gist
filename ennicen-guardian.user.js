@@ -3,7 +3,7 @@
 // @namespace    https://github.com/toothbrush/ennicen-guardian.gist
 // @updateURL    https://raw.githack.com/toothbrush/ennicen-guardian.gist/main/ennicen-guardian.user.js
 // @downloadURL  https://raw.githack.com/toothbrush/ennicen-guardian.gist/main/ennicen-guardian.user.js
-// @version      0.25
+// @version      0.26
 // @description  block junk
 // @author       toothbrush
 // @match        https://www.theguardian.com/*
@@ -162,16 +162,30 @@ function refreshIfStale() {
     // raw.github caches ~5 min; a changing query param is a fresh CDN key, so we
     // get current rules instead of a stale copy (we already rate-limit via TTL above).
     const url = RAW_URL + "?t=" + Date.now();
-    gmXhr({
+    const handle = gmXhr({
         method: "GET",
         url: url,
         onload: function (res) {
+            console.log("[ennicen] rules fetch HTTP " + res.status + " (" +
+                (res.responseText ? res.responseText.length : 0) + " bytes)");
             if (res.status >= 200 && res.status < 300) {
                 cacheRules(res.responseText);
                 applyRules(res.responseText); // use fetched content directly; storage may be a no-op
+                console.log("[ennicen] applied " + syncedSet.size + " mute / " + keepSet.size + " keep rules");
+            } else {
+                console.warn("[ennicen] rules fetch non-2xx, rules NOT applied");
             }
         },
+        onerror: function (res) {
+            console.warn("[ennicen] rules fetch errored (status " + (res && res.status) +
+                ", " + (res && res.error) + ") — likely a missing @connect host or blocked GM XHR");
+        },
+        ontimeout: function () { console.warn("[ennicen] rules fetch timed out"); },
     });
+    if (!handle) {
+        console.warn("[ennicen] no GM XHR available (GM_xmlhttpRequest / GM.xmlHttpRequest both missing) — " +
+            "synced rules.txt cannot be fetched on this device");
+    }
 }
 
 /* ---------- synced hides (reversible: one rebuildable <style>) ---------- */
@@ -685,6 +699,13 @@ registerMenu("Toggle zapper (⌥ to zap)", function () {
 })();
 
 /* ---------- boot ---------- */
+
+console.log("[ennicen] boot v0.26 · " +
+    "GM_addStyle styleEl=" + !!document.getElementById("GM_addStyleBy8626") + " · " +
+    "GM_getValue=" + (typeof GM_getValue === "function") + " · " +
+    "GM_xmlhttpRequest=" + (typeof GM_xmlhttpRequest === "function") + " · " +
+    "GM.xmlHttpRequest=" + (typeof GM !== "undefined" && !!(GM && GM.xmlHttpRequest)) + " · " +
+    "canWrite=" + canWrite());
 
 loadEffectiveRules();   // synchronous, from cache: hide immediately, no flash
 refreshIfStale();       // async: pull latest rules.txt, re-apply
