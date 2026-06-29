@@ -55,19 +55,9 @@ const CACHE_TS_KEY = "rules_cache_ts";
 let syncedSet = new Set();
 let keepSet = new Set();   // selectors the picker should stop offering ("keep" pill)
 
-const boring_topics = [ // list of regexen
-    /\bDuchess\b/,
-    /\bDuke\b/,
-    /\bElon\b/,
-    /\bJoe Rogan\b/,
-    /\bPrince Harry\b/,
-    /\bPrince William\b/,
-    /\bRoyal\b/,
-    /\bTwitter\b/,
-    /\bfootball\b/,
-    /\bfootballer\b/,
-    /\bWorld Cup\b/,
-];
+// Boring-topic regexen, sourced from `boring: <regex>` lines in rules.txt and
+// compiled at apply-time. A headline whose text matches any of these is hidden.
+let boringList = [];
 
 const paul_hide = `.paul_hide { background: purple !important; visibility: hidden !important; }`
 
@@ -127,18 +117,20 @@ function stripComment(raw) {
     return raw.replace(/\s+#.*$/, "").trim();
 }
 
-// Returns { mute, keep }. A bare selector is a hide rule; `keep: <selector>`
-// marks a selector the picker should stop offering.
+// Returns { mute, keep, boring }. A bare selector is a hide rule; `keep: <selector>`
+// marks a selector the picker should stop offering; `boring: <regex>` is a headline
+// text filter (the part after the colon is a JS regex source).
 function parseRules(text) {
-    const mute = [], keep = [];
+    const mute = [], keep = [], boring = [];
     text.split("\n").forEach(function (raw) {
         const line = stripComment(raw);
         if (!line) return;
-        const m = line.match(/^keep:\s*(.+)$/);
-        if (m) keep.push(m[1].trim());
+        let m;
+        if ((m = line.match(/^keep:\s*(.+)$/))) keep.push(m[1].trim());
+        else if ((m = line.match(/^boring:\s*(.+)$/))) boring.push(m[1].trim());
         else mute.push(line);
     });
-    return { mute: mute, keep: keep };
+    return { mute: mute, keep: keep, boring: boring };
 }
 
 function cacheRules(content) {
@@ -146,11 +138,38 @@ function cacheRules(content) {
     gmSet(CACHE_TS_KEY, Date.now());
 }
 
+function compileBoring(sources) {
+    const out = [];
+    sources.forEach(function (src) {
+        try { out.push(new RegExp(src)); }
+        catch (e) { console.warn("[ennicen] ignoring bad boring regex: " + src, e); }
+    });
+    return out;
+}
+
+// Hide headline cards whose text matches any boring-topic regex. Idempotent, so
+// it's safe to re-run on every rules apply (cache load + async refresh).
+function applyBoringFilter() {
+    if (!boringList.length) return;
+    const cards = document.getElementsByClassName("fc-item__container");
+    [].forEach.call(cards, function (thing) {
+        const title = (thing.innerText || thing.textContent);
+        const is_boring = boringList.some(function (topic) { return topic.test(title); });
+        if (is_boring) {
+            thing.classList.add("paul_hide");
+            thing.parentNode.style.backgroundColor = "blue";
+            thing.parentNode.style.opacity = 0;
+        }
+    });
+}
+
 function applyRules(content) {
     const parsed = parseRules(content);
     syncedSet = new Set(parsed.mute);
     keepSet = new Set(parsed.keep);
+    boringList = compileBoring(parsed.boring);
     rebuildSyncedStyle();
+    applyBoringFilter();
 }
 
 function loadEffectiveRules() {
@@ -171,7 +190,7 @@ function refreshIfStale() {
             if (res.status >= 200 && res.status < 300) {
                 cacheRules(res.responseText);
                 applyRules(res.responseText); // use fetched content directly; storage may be a no-op
-                console.log("[ennicen] applied " + syncedSet.size + " mute / " + keepSet.size + " keep rules");
+                console.log("[ennicen] applied " + syncedSet.size + " mute / " + keepSet.size + " keep / " + boringList.length + " boring rules");
             } else {
                 console.warn("[ennicen] rules fetch non-2xx, rules NOT applied");
                 showDebug("rules.txt fetch failed (HTTP " + res.status + ") — synced rules not applied");
@@ -691,24 +710,8 @@ registerMenu("Toggle zapper (⌥ to zap)", function () {
     GM_addStyle("gu-island[name='AuEoy2024Wrapper'] { display: none; }");
     GM_addStyle("gu-island[name='StickyBottomBanner'] { display: none; }");
 
-    var athings = document.getElementsByClassName("fc-item__container");
-
-    [].forEach.call(athings, function (thing) {
-        var actual_title = (thing.innerText || thing.textContent);
-
-        var is_boring = false;
-        [].forEach.call(boring_topics, function (topic) {
-            if(actual_title.match(topic)) {
-                is_boring = true;
-            }
-        });
-
-        if(is_boring) {
-            thing.classList.add("paul_hide");
-            thing.parentNode.style.backgroundColor = "blue";
-            thing.parentNode.style.opacity = 0;
-        };
-    });
+    // Boring-topic headline filtering now lives in applyBoringFilter(), driven by
+    // `boring:` lines in rules.txt and run from applyRules() during boot.
 
     document.querySelectorAll(`[data-spacefinder-type='model.dotcomrendering.pageElements.NewsletterSignupBlockElement']`).forEach(element => {
         element.classList.add("paul_hide");

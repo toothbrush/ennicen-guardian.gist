@@ -6,6 +6,9 @@
 #
 # A line of the form `keep: <selector>` is the opposite: it tells the picker to
 # stop offering that block (the "✓ keep" pill). It hides nothing.
+#
+# A line of the form `boring: <regex>` hides any headline card whose text matches
+# the JS regex (e.g. `boring: Prince Harry`). Use `\b` for word boundaries.
 keep: section#news
 keep: main#maincontent
 section#world-cup-2026
@@ -13,3 +16,14 @@ section#what-to-play
 section#fashion-\&-beauty
 section#newsletters
 section#secure-messaging
+boring: \bDuchess\b
+boring: \bDuke\b
+boring: \bElon\b
+boring: \bJoe Rogan\b
+boring: \bPrince Harry\b
+boring: \bPrince William\b
+boring: \bRoyal\b
+boring: \bTwitter\b
+boring: \bfootball\b
+boring: \bfootballer\b
+boring: \bWorld Cup\b
