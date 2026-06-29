@@ -174,17 +174,24 @@ function refreshIfStale() {
                 console.log("[ennicen] applied " + syncedSet.size + " mute / " + keepSet.size + " keep rules");
             } else {
                 console.warn("[ennicen] rules fetch non-2xx, rules NOT applied");
+                showDebug("rules.txt fetch failed (HTTP " + res.status + ") — synced rules not applied");
             }
         },
         onerror: function (res) {
             console.warn("[ennicen] rules fetch errored (status " + (res && res.status) +
                 ", " + (res && res.error) + ") — likely a missing @connect host or blocked GM XHR");
+            showDebug("rules.txt fetch errored (status " + (res && res.status) +
+                ") — check @connect / GM XHR permission");
         },
-        ontimeout: function () { console.warn("[ennicen] rules fetch timed out"); },
+        ontimeout: function () {
+            console.warn("[ennicen] rules fetch timed out");
+            showDebug("rules.txt fetch timed out");
+        },
     });
     if (!handle) {
         console.warn("[ennicen] no GM XHR available (GM_xmlhttpRequest / GM.xmlHttpRequest both missing) — " +
             "synced rules.txt cannot be fetched on this device");
+        showDebug("no GM XHR available — can't fetch synced rules.txt on this device");
     }
 }
 
@@ -608,6 +615,27 @@ function showToast(msg, actionLabel, actionFn) {
 
 function hideToast() { if (toastEl) toastEl.style.display = "none"; }
 
+/* ---------- on-page debug banner ----------
+ * A visible fallback for devices where you can't attach a console (e.g. iOS).
+ * Self-contained: builds its own DOM, no GM APIs, so it shows even when the
+ * rest of the script's plumbing is unavailable. Tap to dismiss. */
+
+var debugEl = null; // var, not let: showDebug is hoisted and may run from the earlier staticHides IIFE
+
+function showDebug(msg) {
+    if (!debugEl) {
+        debugEl = document.createElement("div");
+        debugEl.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:2147483647;" +
+            "background:#b00020;color:#fff;padding:10px 14px;" +
+            "font:bold 13px/1.4 -apple-system,sans-serif;text-align:center;cursor:pointer;" +
+            "box-shadow:0 2px 8px rgba(0,0,0,.4);";
+        debugEl.addEventListener("click", function () { debugEl.style.display = "none"; });
+        document.body.appendChild(debugEl);
+    }
+    debugEl.textContent = "ennicen-guardian: " + msg + "  (tap to dismiss)";
+    debugEl.style.display = "block";
+}
+
 /* ---------- menu commands ---------- */
 
 function registerMenu(label, fn) {
@@ -638,6 +666,7 @@ registerMenu("Toggle zapper (⌥ to zap)", function () {
 /* ---------- static, hand-curated hides + boring-topic filtering ---------- */
 
 (function staticHides() {
+  try {
     console.log("Hi Guardian");
     GM_addStyle(paul_hide);
     GM_addStyle("#sport { display: none; }");
@@ -696,6 +725,10 @@ registerMenu("Toggle zapper (⌥ to zap)", function () {
     document.querySelectorAll(`gu-island[name='InteractiveBlockComponent']`).forEach(element => {
         element.classList.add("paul_hide");
     });
+  } catch (e) {
+    console.error("[ennicen] static hides threw:", e);
+    showDebug("static hides failed: " + (e && e.message) + " — GM_addStyle/insertRule may be unsupported here");
+  }
 })();
 
 /* ---------- boot ---------- */
