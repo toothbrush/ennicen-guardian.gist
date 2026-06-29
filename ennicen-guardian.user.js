@@ -3,7 +3,7 @@
 // @namespace    https://github.com/toothbrush/ennicen-guardian.gist
 // @updateURL    https://raw.githack.com/toothbrush/ennicen-guardian.gist/main/ennicen-guardian.user.js
 // @downloadURL  https://raw.githack.com/toothbrush/ennicen-guardian.gist/main/ennicen-guardian.user.js
-// @version      0.24
+// @version      0.25
 // @description  block junk
 // @author       toothbrush
 // @match        https://www.theguardian.com/*
@@ -624,7 +624,6 @@ registerMenu("Toggle zapper (⌥ to zap)", function () {
 /* ---------- static, hand-curated hides + boring-topic filtering ---------- */
 
 (function staticHides() {
-    'use strict';
     console.log("Hi Guardian");
     GM_addStyle(paul_hide);
     GM_addStyle("#sport { display: none; }");
