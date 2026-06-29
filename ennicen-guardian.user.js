@@ -3,7 +3,7 @@
 // @namespace    https://github.com/toothbrush/ennicen-guardian.gist
 // @updateURL    https://raw.githubusercontent.com/toothbrush/ennicen-guardian.gist/main/ennicen-guardian.user.js
 // @downloadURL  https://raw.githubusercontent.com/toothbrush/ennicen-guardian.gist/main/ennicen-guardian.user.js
-// @version      0.15
+// @version      0.16
 // @description  block junk
 // @author       toothbrush
 // @match        https://www.theguardian.com/*
@@ -344,13 +344,27 @@ function findCandidate(start) {
 
 /* ---------- hover affordance: highlight + floating [mute] pill ---------- */
 
-let highlightEl = null, muteBtn = null, keepBtn = null;
+let highlightEl = null, muteBtn = null, keepBtn = null, muteName = null, keepName = null;
 let currentSelector = null, hideTimer = null, rafPending = false;
 
 function pillStyle(bg) {
     return "position:fixed;z-index:2147483647;display:none;cursor:pointer;color:#fff;border:none;" +
-        "border-radius:4px;padding:3px 8px;font:bold 12px/1 sans-serif;" +
-        "box-shadow:0 1px 4px rgba(0,0,0,.4);background:" + bg + ";";
+        "border-radius:4px;padding:4px 8px;font:bold 12px/1.3 sans-serif;text-align:center;" +
+        "white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.4);background:" + bg + ";";
+}
+
+// Build a pill with a fixed label line and a second line for the selector name.
+function buildPill(label, bg, onClick) {
+    const btn = document.createElement("button");
+    btn.style.cssText = pillStyle(bg);
+    btn.appendChild(document.createTextNode(label));
+    btn.appendChild(document.createElement("br"));
+    const name = document.createElement("span");
+    name.style.cssText = "font-weight:normal;font-size:11px;opacity:.95;";
+    btn.appendChild(name);
+    btn.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); onClick(); });
+    document.body.appendChild(btn);
+    return { btn: btn, name: name };
 }
 
 function ensureAffordance() {
@@ -360,23 +374,11 @@ function ensureAffordance() {
         "border:2px solid #c70000;background:rgba(199,0,0,.12);box-sizing:border-box;display:none;";
     document.body.appendChild(highlightEl);
 
-    muteBtn = document.createElement("button");
-    muteBtn.textContent = "✕ mute";
-    muteBtn.style.cssText = pillStyle("#c70000");
-    muteBtn.addEventListener("click", function (e) {
-        e.preventDefault(); e.stopPropagation();
-        muteSelector(currentSelector);
-    });
-    document.body.appendChild(muteBtn);
+    const mute = buildPill("✕ mute", "#c70000", function () { muteSelector(currentSelector); });
+    muteBtn = mute.btn; muteName = mute.name;
 
-    keepBtn = document.createElement("button");
-    keepBtn.textContent = "✓ keep";
-    keepBtn.style.cssText = pillStyle("#1a7f37");
-    keepBtn.addEventListener("click", function (e) {
-        e.preventDefault(); e.stopPropagation();
-        keepSelector(currentSelector);
-    });
-    document.body.appendChild(keepBtn);
+    const keep = buildPill("✓ keep", "#1a7f37", function () { keepSelector(currentSelector); });
+    keepBtn = keep.btn; keepName = keep.name;
 }
 
 function showAffordanceFor(el, sel) {
@@ -388,15 +390,20 @@ function showAffordanceFor(el, sel) {
     highlightEl.style.width = r.width + "px";
     highlightEl.style.height = r.height + "px";
     highlightEl.style.display = "block";
-    const top = Math.max(2, r.top + 4) + "px";
-    muteBtn.style.top = top;
-    muteBtn.style.left = (r.right - 70) + "px";
+
+    // Both pills right-aligned to the block's right edge, stacked: mute, then keep.
+    muteName.textContent = sel;
+    keepName.textContent = sel;
+    const right = Math.max(2, window.innerWidth - r.right) + "px";
+    const top = Math.max(2, r.top + 4);
+    muteBtn.style.left = "auto";
+    muteBtn.style.right = right;
+    muteBtn.style.top = top + "px";
     muteBtn.style.display = "block";
-    muteBtn.title = "Mute " + sel;
-    keepBtn.style.top = top;
-    keepBtn.style.left = (r.right - 138) + "px";
+    keepBtn.style.left = "auto";
+    keepBtn.style.right = right;
+    keepBtn.style.top = (top + muteBtn.offsetHeight + 4) + "px"; // offsetHeight valid now it's shown
     keepBtn.style.display = "block";
-    keepBtn.title = "Stop offering to mute " + sel;
 }
 
 function hideAffordance() {
