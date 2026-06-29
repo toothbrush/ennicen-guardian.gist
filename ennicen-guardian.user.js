@@ -3,7 +3,7 @@
 // @namespace    https://github.com/toothbrush/ennicen-guardian.gist
 // @updateURL    https://raw.githack.com/toothbrush/ennicen-guardian.gist/main/ennicen-guardian.user.js
 // @downloadURL  https://raw.githack.com/toothbrush/ennicen-guardian.gist/main/ennicen-guardian.user.js
-// @version      0.22
+// @version      0.23
 // @description  block junk
 // @author       toothbrush
 // @match        https://www.theguardian.com/*
@@ -27,10 +27,12 @@
  *      only devices with a GitHub token configured can append to it. Each append
  *      is a real commit via the Contents API.
  *
- * To zap: hover any large block; floating [mute]/[keep] pills snap to the
- * nearest block with a *stable* identifier and highlight it (that's your
- * preview). [mute] hides it everywhere and commits the selector to rules.txt.
- * [keep] writes a `keep:` line so the picker stops offering that block.
+ * To zap: hold ⌥ (Option/Alt) and [mute]/[keep] pills appear for the nearest
+ * block under the cursor that has a *stable* identifier, highlighting it (that's
+ * your preview). Release ⌥ and the box stays so you can click a pill; press ⌥
+ * again over a nested element to retarget the innermost block. [mute] hides the
+ * block everywhere and commits its selector to rules.txt; [keep] writes a
+ * `keep:` line so the picker stops offering that block. Esc dismisses.
  *
  * To enable zapping on this device: Tampermonkey menu -> "Set GitHub token...".
  * Use a fine-grained PAT scoped to this repo's *Contents: read/write only* with
@@ -372,8 +374,9 @@ function findCandidate(start) {
 
 /* ---------- hover affordance: highlight + floating [mute] pill ---------- */
 
-let highlightEl = null, muteBtn = null, keepBtn = null, muteName = null, keepName = null;
+let highlightEl = null, muteBtn = null, keepBtn = null, muteName = null, keepName = null, badgeEl = null;
 let currentSelector = null, currentTargetEl = null, hideTimer = null, rafPending = false;
+let lastX = -1, lastY = -1;
 
 function pillStyle(bg) {
     return "position:fixed;z-index:2147483647;display:none;cursor:pointer;color:#fff;border:none;" +
@@ -407,6 +410,30 @@ function ensureAffordance() {
 
     const keep = buildPill("✓ keep", "#1a7f37", function () { keepSelector(currentSelector); });
     keepBtn = keep.btn; keepName = keep.name;
+}
+
+// Unfussy, click-through status chip in the top-left corner.
+function ensureBadge() {
+    if (badgeEl) return;
+    badgeEl = document.createElement("div");
+    badgeEl.textContent = "ennicen-guardian active · hold ⌥ to zap";
+    badgeEl.style.cssText = "position:fixed;top:8px;left:8px;z-index:2147483640;pointer-events:none;" +
+        "background:rgba(0,0,0,.45);color:#fff;padding:6px 9px;border-radius:6px;" +
+        "font:11px/1.3 sans-serif;opacity:.7;max-width:150px;display:none;";
+    document.body.appendChild(badgeEl);
+}
+
+function ownUi(el) {
+    return el === muteBtn || el === keepBtn || el === highlightEl || el === badgeEl ||
+        (muteBtn && muteBtn.contains(el)) || (keepBtn && keepBtn.contains(el));
+}
+
+// Topmost page element at a point, ignoring our own overlay/pills.
+function topPageElementAt(x, y) {
+    if (x < 0 || y < 0) return null;
+    const els = document.elementsFromPoint(x, y);
+    for (let i = 0; i < els.length; i++) { if (!ownUi(els[i])) return els[i]; }
+    return null;
 }
 
 // Lay the highlight + pills onto the current target's current rect. Cheap enough
@@ -456,7 +483,9 @@ function pointInRect(x, y, r) {
 }
 
 function onMouseMove(e) {
+    lastX = e.clientX; lastY = e.clientY;
     if (e.target === muteBtn || e.target === keepBtn) { clearTimeout(hideTimer); return; } // over a pill
+    if (!e.altKey) return; // pills only track while ⌥ is held; otherwise leave them as-is
     // Stay locked to the current block while the cursor remains inside it (the
     // pills sit in its top-right corner, so reaching them keeps us inside). This
     // is what stops the jitter — we only retarget when the cursor actually leaves.
@@ -476,6 +505,23 @@ function onMouseMove(e) {
     });
 }
 
+function onKeyDown(e) {
+    if (e.key === "Escape") { hideAffordance(); return; }
+    // A fresh ⌥ press (re)targets the innermost block under the cursor, bypassing
+    // the lock — release and press again to drill into a nested block.
+    if (e.key === "Alt" || (e.code && e.code.indexOf("Alt") === 0)) {
+        const el = topPageElementAt(lastX, lastY);
+        const cand = el ? findCandidate(el) : null;
+        if (cand) showAffordanceFor(cand.el, cand.sel);
+    }
+}
+
+// Click on the page (not a pill) dismisses the frozen box; the pill's own
+// handler stops propagation, so a pill click acts instead of dismissing.
+function onDocClick(e) {
+    if (currentTargetEl && !ownUi(e.target)) hideAffordance();
+}
+
 // Keep the pills pinned to the block as the page scrolls, rather than flickering
 // off; drop them only if the block scrolls fully out of view.
 function onScrollOrResize() {
@@ -489,16 +535,23 @@ function onScrollOrResize() {
 function enableHoverMute() {
     if (!canWrite()) return;
     ensureAffordance();
+    ensureBadge();
+    badgeEl.style.display = "block";
     document.addEventListener("mousemove", onMouseMove, true);
+    document.addEventListener("keydown", onKeyDown, true);
+    document.addEventListener("click", onDocClick, true);
     window.addEventListener("scroll", onScrollOrResize, true);
     window.addEventListener("resize", onScrollOrResize, true);
 }
 
 function disableHoverMute() {
     document.removeEventListener("mousemove", onMouseMove, true);
+    document.removeEventListener("keydown", onKeyDown, true);
+    document.removeEventListener("click", onDocClick, true);
     window.removeEventListener("scroll", onScrollOrResize, true);
     window.removeEventListener("resize", onScrollOrResize, true);
     hideAffordance();
+    if (badgeEl) badgeEl.style.display = "none";
 }
 
 /* ---------- toast / undo ---------- */
@@ -539,21 +592,21 @@ registerMenu("Set GitHub token…", function () {
     const t = prompt("Fine-grained PAT, scoped to this repo's Contents: read/write ONLY. Blank to clear:", getToken());
     if (t === null) return;
     const trimmed = t.trim();
-    if (!trimmed) { gmDelete(TOKEN_KEY); disableHoverMute(); alert("Token cleared. Mute pill hidden on this device."); return; }
+    if (!trimmed) { gmDelete(TOKEN_KEY); disableHoverMute(); alert("Token cleared. Zapper disabled on this device."); return; }
     gmSet(TOKEN_KEY, trimmed);
     ghApi("GET", null, function (err, file) { // validate at entry, not every page load
         if (err) { alert("⚠ Token saved but validation failed: " + err.message); return; }
         const ok = file && file.content;
-        if (ok) { enableHoverMute(); alert("Token works. Hover a block to see the mute pill."); }
+        if (ok) { enableHoverMute(); alert("Token works. Hold ⌥ (Option) over a block to zap it."); }
         else alert("Token works, but '" + RULES_FILENAME + "' isn't in the repo yet — create it first.");
     });
 });
 
-registerMenu("Toggle hover-mute pill", function () {
+registerMenu("Toggle zapper (⌥ to zap)", function () {
     const next = !hoverMuteEnabled();
     gmSet(HOVER_KEY, next);
-    if (next) { enableHoverMute(); alert("Hover-mute pill ON."); }
-    else { disableHoverMute(); alert("Hover-mute pill OFF."); }
+    if (next) { enableHoverMute(); alert("Zapper ON. Hold ⌥ over a block."); }
+    else { disableHoverMute(); alert("Zapper OFF."); }
 });
 
 /* ---------- static, hand-curated hides + boring-topic filtering ---------- */
