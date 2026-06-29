@@ -3,7 +3,7 @@
 // @namespace    https://github.com/toothbrush/ennicen-guardian.gist
 // @updateURL    https://raw.githubusercontent.com/toothbrush/ennicen-guardian.gist/main/ennicen-guardian.user.js
 // @downloadURL  https://raw.githubusercontent.com/toothbrush/ennicen-guardian.gist/main/ennicen-guardian.user.js
-// @version      0.14
+// @version      0.15
 // @description  block junk
 // @author       toothbrush
 // @match        https://www.theguardian.com/*
@@ -27,9 +27,10 @@
  *      only devices with a GitHub token configured can append to it. Each append
  *      is a real commit via the Contents API.
  *
- * To zap: hover any large block; a floating [mute] pill snaps to the nearest
- * block that has a *stable* identifier and highlights it (that's your preview).
- * Click the pill to hide it everywhere and commit the selector to rules.txt.
+ * To zap: hover any large block; floating [mute]/[keep] pills snap to the
+ * nearest block with a *stable* identifier and highlight it (that's your
+ * preview). [mute] hides it everywhere and commits the selector to rules.txt.
+ * [keep] writes a `keep:` line so the picker stops offering that block.
  *
  * To enable zapping on this device: Tampermonkey menu -> "Set GitHub token...".
  * Use a fine-grained PAT scoped to this repo's *Contents: read/write only* with
@@ -50,6 +51,7 @@ const CACHE_KEY = "rules_cache";
 const CACHE_TS_KEY = "rules_cache_ts";
 
 let syncedSet = new Set();
+let keepSet = new Set();   // selectors the picker should stop offering ("keep" pill)
 
 const boring_topics = [ // list of regexen
     /\bDuchess\b/,
@@ -103,13 +105,18 @@ function hoverMuteEnabled() { return gmGet(HOVER_KEY, true); }
 
 /* ---------- rules file: parse / cache / apply ---------- */
 
+// Returns { mute, keep }. A bare selector is a hide rule; `keep: <selector>`
+// marks a selector the picker should stop offering.
 function parseRules(text) {
-    const sels = [];
+    const mute = [], keep = [];
     text.split("\n").forEach(function (raw) {
-        const sel = raw.replace(/#.*$/, "").trim(); // strip inline `# comment`
-        if (sel) sels.push(sel);
+        const line = raw.replace(/#.*$/, "").trim(); // strip inline `# comment`
+        if (!line) return;
+        const m = line.match(/^keep:\s*(.+)$/);
+        if (m) keep.push(m[1].trim());
+        else mute.push(line);
     });
-    return sels;
+    return { mute: mute, keep: keep };
 }
 
 function cacheRules(content) {
@@ -118,7 +125,9 @@ function cacheRules(content) {
 }
 
 function applyRules(content) {
-    syncedSet = new Set(parseRules(content));
+    const parsed = parseRules(content);
+    syncedSet = new Set(parsed.mute);
+    keepSet = new Set(parsed.keep);
     rebuildSyncedStyle();
 }
 
@@ -208,7 +217,7 @@ function mutateRules(message, transform, cb) {
 
 function appendRule(selector, cb) {
     mutateRules("rules.txt: Add " + selector, function (content) {
-        if (parseRules(content).includes(selector)) return null; // already present
+        if (parseRules(content).mute.includes(selector)) return null; // already present
         const lines = content.replace(/\n+$/, "").split("\n");
         lines.push(selector);
         return lines.join("\n") + "\n";
@@ -219,6 +228,25 @@ function removeRule(selector, cb) {
     mutateRules("rules.txt: Remove " + selector, function (content) {
         return content.split("\n").filter(function (line) {
             return line.replace(/#.*$/, "").trim() !== selector;
+        }).join("\n");
+    }, cb);
+}
+
+function appendKeep(selector, cb) {
+    const entry = "keep: " + selector;
+    mutateRules("rules.txt: Keep " + selector, function (content) {
+        if (parseRules(content).keep.includes(selector)) return null; // already kept
+        const lines = content.replace(/\n+$/, "").split("\n");
+        lines.push(entry);
+        return lines.join("\n") + "\n";
+    }, cb);
+}
+
+function removeKeep(selector, cb) {
+    mutateRules("rules.txt: Unkeep " + selector, function (content) {
+        return content.split("\n").filter(function (line) {
+            const m = line.replace(/#.*$/, "").trim().match(/^keep:\s*(.+)$/);
+            return !(m && m[1].trim() === selector);
         }).join("\n");
     }, cb);
 }
@@ -247,6 +275,28 @@ function unmuteSelector(selector) {
         syncedSet.delete(selector);
         rebuildSyncedStyle();
         showToast("Restored " + selector);
+    });
+}
+
+function keepSelector(selector) {
+    if (!selector || keepSet.has(selector)) return;
+    keepSet.add(selector);   // optimistic: picker stops offering it immediately
+    hideAffordance();
+    appendKeep(selector, function (err) {
+        if (err) {
+            keepSet.delete(selector); // revert: not actually synced
+            showToast("⚠ couldn't keep " + selector + ": " + err.message);
+        } else {
+            showToast("Won't offer " + selector + " again", "undo", function () { unkeepSelector(selector); });
+        }
+    });
+}
+
+function unkeepSelector(selector) {
+    removeKeep(selector, function (err) {
+        if (err) { showToast("⚠ couldn't unkeep " + selector + ": " + err.message); return; }
+        keepSet.delete(selector);
+        showToast("Will offer " + selector + " again");
     });
 }
 
@@ -285,17 +335,23 @@ function isLargeEnough(el) {
 function findCandidate(start) {
     let el = start;
     for (let d = 0; el && el !== document.body && d < 14; d++, el = el.parentElement) {
-        if (el === muteBtn || el === highlightEl) continue;
+        if (el === muteBtn || el === keepBtn || el === highlightEl) continue;
         const sel = stableSelectorFor(el);
-        if (sel && isLargeEnough(el)) return { el: el, sel: sel };
+        if (sel && isLargeEnough(el) && !keepSet.has(sel)) return { el: el, sel: sel };
     }
     return null;
 }
 
 /* ---------- hover affordance: highlight + floating [mute] pill ---------- */
 
-let highlightEl = null, muteBtn = null;
+let highlightEl = null, muteBtn = null, keepBtn = null;
 let currentSelector = null, hideTimer = null, rafPending = false;
+
+function pillStyle(bg) {
+    return "position:fixed;z-index:2147483647;display:none;cursor:pointer;color:#fff;border:none;" +
+        "border-radius:4px;padding:3px 8px;font:bold 12px/1 sans-serif;" +
+        "box-shadow:0 1px 4px rgba(0,0,0,.4);background:" + bg + ";";
+}
 
 function ensureAffordance() {
     if (highlightEl) return;
@@ -306,14 +362,21 @@ function ensureAffordance() {
 
     muteBtn = document.createElement("button");
     muteBtn.textContent = "✕ mute";
-    muteBtn.style.cssText = "position:fixed;z-index:2147483647;display:none;cursor:pointer;" +
-        "background:#c70000;color:#fff;border:none;border-radius:4px;padding:3px 8px;" +
-        "font:bold 12px/1 sans-serif;box-shadow:0 1px 4px rgba(0,0,0,.4);";
+    muteBtn.style.cssText = pillStyle("#c70000");
     muteBtn.addEventListener("click", function (e) {
         e.preventDefault(); e.stopPropagation();
         muteSelector(currentSelector);
     });
     document.body.appendChild(muteBtn);
+
+    keepBtn = document.createElement("button");
+    keepBtn.textContent = "✓ keep";
+    keepBtn.style.cssText = pillStyle("#1a7f37");
+    keepBtn.addEventListener("click", function (e) {
+        e.preventDefault(); e.stopPropagation();
+        keepSelector(currentSelector);
+    });
+    document.body.appendChild(keepBtn);
 }
 
 function showAffordanceFor(el, sel) {
@@ -325,21 +388,27 @@ function showAffordanceFor(el, sel) {
     highlightEl.style.width = r.width + "px";
     highlightEl.style.height = r.height + "px";
     highlightEl.style.display = "block";
-    muteBtn.style.top = Math.max(2, r.top + 4) + "px";
+    const top = Math.max(2, r.top + 4) + "px";
+    muteBtn.style.top = top;
     muteBtn.style.left = (r.right - 70) + "px";
     muteBtn.style.display = "block";
     muteBtn.title = "Mute " + sel;
+    keepBtn.style.top = top;
+    keepBtn.style.left = (r.right - 138) + "px";
+    keepBtn.style.display = "block";
+    keepBtn.title = "Stop offering to mute " + sel;
 }
 
 function hideAffordance() {
     if (!highlightEl) return;
     highlightEl.style.display = "none";
     muteBtn.style.display = "none";
+    keepBtn.style.display = "none";
     currentSelector = null;
 }
 
 function onMouseMove(e) {
-    if (e.target === muteBtn) return; // hovering the pill itself: keep current
+    if (e.target === muteBtn || e.target === keepBtn) return; // hovering a pill: keep current
     if (rafPending) return;
     rafPending = true;
     const target = e.target;

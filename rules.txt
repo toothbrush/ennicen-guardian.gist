@@ -3,3 +3,6 @@
 # Read by every device (unauthenticated, via raw.github); only devices with a
 # GitHub token can append. Each selector is hidden with `display: none`.
 # `# ...` is an inline comment and is stripped before use.
+#
+# A line of the form `keep: <selector>` is the opposite: it tells the picker to
+# stop offering that block (the "✓ keep" pill). It hides nothing.
