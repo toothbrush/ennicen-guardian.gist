@@ -27,3 +27,4 @@ boring: \bTwitter\b
 boring: \bfootball\b
 boring: \bfootballer\b
 boring: \bWorld Cup\b
+keep: section#world-cup-2026
