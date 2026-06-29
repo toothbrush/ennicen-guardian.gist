@@ -3,7 +3,7 @@
 // @namespace    https://github.com/toothbrush/ennicen-guardian.gist
 // @updateURL    https://raw.githack.com/toothbrush/ennicen-guardian.gist/main/ennicen-guardian.user.js
 // @downloadURL  https://raw.githack.com/toothbrush/ennicen-guardian.gist/main/ennicen-guardian.user.js
-// @version      0.19
+// @version      0.20
 // @description  block junk
 // @author       toothbrush
 // @match        https://www.theguardian.com/*
@@ -169,9 +169,14 @@ function rebuildSyncedStyle() {
 /* ---------- GitHub API (write path) ---------- */
 
 function ghApi(method, body, cb) {
+    // The contents API ships Cache-Control: max-age=60, so a read within ~60s of
+    // a write can return stale content+sha — which makes the dedupe guard miss
+    // and double-adds the rule (and yields a stale sha → 409). Bust the cache on
+    // reads. Writes (PUT) aren't cached.
+    const url = method === "GET" ? `${API_URL}?ref=${BRANCH}&t=${Date.now()}` : API_URL;
     gmXhr({
         method: method,
-        url: API_URL,
+        url: url,
         headers: {
             "Authorization": "Bearer " + getToken(),
             "Accept": "application/vnd.github+json",

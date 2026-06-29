@@ -7,4 +7,3 @@
 # A line of the form `keep: <selector>` is the opposite: it tells the picker to
 # stop offering that block (the "✓ keep" pill). It hides nothing.
 keep: section#news
-keep: section#news
