@@ -3,7 +3,7 @@
 // @namespace    https://github.com/toothbrush/ennicen-guardian.gist
 // @updateURL    https://raw.githubusercontent.com/toothbrush/ennicen-guardian.gist/main/ennicen-guardian.user.js
 // @downloadURL  https://raw.githubusercontent.com/toothbrush/ennicen-guardian.gist/main/ennicen-guardian.user.js
-// @version      0.17
+// @version      0.18
 // @description  block junk
 // @author       toothbrush
 // @match        https://www.theguardian.com/*
@@ -137,9 +137,12 @@ function loadEffectiveRules() {
 
 function refreshIfStale() {
     if (Date.now() - gmGet(CACHE_TS_KEY, 0) < CACHE_TTL_MS) return;
+    // raw.github caches ~5 min; a changing query param is a fresh CDN key, so we
+    // get current rules instead of a stale copy (we already rate-limit via TTL above).
+    const url = RAW_URL + "?t=" + Date.now();
     gmXhr({
         method: "GET",
-        url: RAW_URL,
+        url: url,
         onload: function (res) {
             if (res.status >= 200 && res.status < 300) {
                 cacheRules(res.responseText);
