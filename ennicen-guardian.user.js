@@ -3,7 +3,7 @@
 // @namespace    https://github.com/toothbrush/ennicen-guardian.gist
 // @updateURL    https://raw.githack.com/toothbrush/ennicen-guardian.gist/main/ennicen-guardian.user.js
 // @downloadURL  https://raw.githack.com/toothbrush/ennicen-guardian.gist/main/ennicen-guardian.user.js
-// @version      0.20
+// @version      0.21
 // @description  block junk
 // @author       toothbrush
 // @match        https://www.theguardian.com/*
@@ -105,12 +105,20 @@ function hoverMuteEnabled() { return gmGet(HOVER_KEY, true); }
 
 /* ---------- rules file: parse / cache / apply ---------- */
 
+// Strip a `# comment` without eating the `#` in id selectors (`section#news`).
+// A comment is the whole line (leading #) or follows whitespace; selectors here
+// are single compound selectors, so a bare `tag#id` is never mistaken for one.
+function stripComment(raw) {
+    if (/^\s*#/.test(raw)) return "";
+    return raw.replace(/\s+#.*$/, "").trim();
+}
+
 // Returns { mute, keep }. A bare selector is a hide rule; `keep: <selector>`
 // marks a selector the picker should stop offering.
 function parseRules(text) {
     const mute = [], keep = [];
     text.split("\n").forEach(function (raw) {
-        const line = raw.replace(/#.*$/, "").trim(); // strip inline `# comment`
+        const line = stripComment(raw);
         if (!line) return;
         const m = line.match(/^keep:\s*(.+)$/);
         if (m) keep.push(m[1].trim());
@@ -247,7 +255,7 @@ function appendRule(selector, cb) {
 function removeRule(selector, cb) {
     mutateRules("rules.txt: Remove " + selector, function (content) {
         return content.split("\n").filter(function (line) {
-            return line.replace(/#.*$/, "").trim() !== selector;
+            return stripComment(line) !== selector;
         }).join("\n");
     }, cb);
 }
@@ -265,7 +273,7 @@ function appendKeep(selector, cb) {
 function removeKeep(selector, cb) {
     mutateRules("rules.txt: Unkeep " + selector, function (content) {
         return content.split("\n").filter(function (line) {
-            const m = line.replace(/#.*$/, "").trim().match(/^keep:\s*(.+)$/);
+            const m = stripComment(line).match(/^keep:\s*(.+)$/);
             return !(m && m[1].trim() === selector);
         }).join("\n");
     }, cb);
