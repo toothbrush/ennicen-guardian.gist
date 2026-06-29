@@ -3,7 +3,7 @@
 // @namespace    https://github.com/toothbrush/ennicen-guardian.gist
 // @updateURL    https://raw.githack.com/toothbrush/ennicen-guardian.gist/main/ennicen-guardian.user.js
 // @downloadURL  https://raw.githack.com/toothbrush/ennicen-guardian.gist/main/ennicen-guardian.user.js
-// @version      0.27
+// @version      0.28
 // @description  block junk
 // @author       toothbrush
 // @match        https://www.theguardian.com/*
@@ -224,8 +224,13 @@ function rebuildSyncedStyle() {
         syncedStyleEl.id = "ennicen-synced-hide";
         document.head.appendChild(syncedStyleEl);
     }
+    // One rule per selector (not a single comma-joined group): a browser drops a
+    // whole selector group if any one member is invalid, so an unparseable line
+    // would otherwise take down every hide. Per-rule, only the bad one is dropped.
     const selectors = [...syncedSet];
-    syncedStyleEl.textContent = selectors.length ? selectors.join(",\n") + " { display: none !important; }" : "";
+    syncedStyleEl.textContent = selectors
+        .map(function (s) { return s + " { display: none !important; }"; })
+        .join("\n");
 }
 
 /* ---------- GitHub API (write path) ---------- */
@@ -736,7 +741,7 @@ registerMenu("Toggle zapper (⌥ to zap)", function () {
 
 /* ---------- boot ---------- */
 
-console.log("[ennicen] boot v0.27 · " +
+console.log("[ennicen] boot v0.28 · " +
     "GM_addStyle styleEl=" + !!document.getElementById("GM_addStyleBy8626") + " · " +
     "GM_getValue=" + (typeof GM_getValue === "function") + " · " +
     "GM_xmlhttpRequest=" + (typeof GM_xmlhttpRequest === "function") + " · " +
