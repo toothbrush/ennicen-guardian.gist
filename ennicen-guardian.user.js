@@ -1,15 +1,55 @@
 // ==UserScript==
 // @name         ennicen-guardian
-// @namespace    https://gist.github.com/toothbrush/f7426d7fbb46e621bf1aa4146af64cf8
-// @updateURL    https://gist.githubusercontent.com/toothbrush/f7426d7fbb46e621bf1aa4146af64cf8/raw/ennicen-guardian.user.js
-// @downloadURL  https://gist.githubusercontent.com/toothbrush/f7426d7fbb46e621bf1aa4146af64cf8/raw/ennicen-guardian.user.js
-// @version      0.13
+// @namespace    https://github.com/toothbrush/ennicen-guardian.gist
+// @updateURL    https://raw.githubusercontent.com/toothbrush/ennicen-guardian.gist/main/ennicen-guardian.user.js
+// @downloadURL  https://raw.githubusercontent.com/toothbrush/ennicen-guardian.gist/main/ennicen-guardian.user.js
+// @version      0.14
 // @description  block junk
 // @author       toothbrush
 // @match        https://www.theguardian.com/*
 // @exclude      https://www.theguardian.com/commentisfree/*
+// @grant        GM_setValue
+// @grant        GM_getValue
+// @grant        GM_deleteValue
+// @grant        GM_xmlhttpRequest
+// @grant        GM_registerMenuCommand
+// @grant        GM.xmlHttpRequest
+// @connect      api.github.com
+// @connect      raw.githubusercontent.com
 // @run-at       document-idle
 // ==/UserScript==
+
+/*
+ * Two kinds of hides live here:
+ *   1. Static, hand-curated rules — inline below in the IIFE (GM_addStyle calls).
+ *   2. Zapped rules — CSS selectors in a separate plain-text file (rules.txt) in
+ *      this repo. Every device reads rules.txt (unauthenticated, via raw.github);
+ *      only devices with a GitHub token configured can append to it. Each append
+ *      is a real commit via the Contents API.
+ *
+ * To zap: hover any large block; a floating [mute] pill snaps to the nearest
+ * block that has a *stable* identifier and highlights it (that's your preview).
+ * Click the pill to hide it everywhere and commit the selector to rules.txt.
+ *
+ * To enable zapping on this device: Tampermonkey menu -> "Set GitHub token...".
+ * Use a fine-grained PAT scoped to this repo's *Contents: read/write only* with
+ * an expiry. Stored in GM storage (sandboxed to this script), never in the repo.
+ * Mobile stays read-only (no token there).
+ */
+
+const REPO = "toothbrush/ennicen-guardian.gist";
+const BRANCH = "main";
+const RULES_FILENAME = "rules.txt";
+const RAW_URL = `https://raw.githubusercontent.com/${REPO}/${BRANCH}/${RULES_FILENAME}`;
+const API_URL = `https://api.github.com/repos/${REPO}/contents/${RULES_FILENAME}`;
+const CACHE_TTL_MS = 5 * 60 * 1000;
+
+const TOKEN_KEY = "gh_gist_token";
+const HOVER_KEY = "hover_mute_enabled";
+const CACHE_KEY = "rules_cache";
+const CACHE_TS_KEY = "rules_cache_ts";
+
+let syncedSet = new Set();
 
 const boring_topics = [ // list of regexen
     /\bDuchess\b/,
@@ -39,7 +79,353 @@ function GM_addStyle(css) {
   sheet.insertRule(css, (sheet.rules || sheet.cssRules || []).length);
 }
 
-(function() {
+/* ---------- GM API shims (degrade gracefully on hosts missing an API) ---------- */
+
+function gmGet(key, def) {
+    try { if (typeof GM_getValue === "function") return GM_getValue(key, def); } catch (e) {}
+    return def;
+}
+function gmSet(key, val) {
+    try { if (typeof GM_setValue === "function") GM_setValue(key, val); } catch (e) {}
+}
+function gmDelete(key) {
+    try { if (typeof GM_deleteValue === "function") GM_deleteValue(key); } catch (e) {}
+}
+function gmXhr(details) {
+    if (typeof GM_xmlhttpRequest === "function") return GM_xmlhttpRequest(details);
+    if (typeof GM !== "undefined" && GM && GM.xmlHttpRequest) return GM.xmlHttpRequest(details);
+    return null;
+}
+
+function getToken() { return gmGet(TOKEN_KEY, ""); }
+function canWrite() { return !!getToken(); }
+function hoverMuteEnabled() { return gmGet(HOVER_KEY, true); }
+
+/* ---------- rules file: parse / cache / apply ---------- */
+
+function parseRules(text) {
+    const sels = [];
+    text.split("\n").forEach(function (raw) {
+        const sel = raw.replace(/#.*$/, "").trim(); // strip inline `# comment`
+        if (sel) sels.push(sel);
+    });
+    return sels;
+}
+
+function cacheRules(content) {
+    gmSet(CACHE_KEY, content);
+    gmSet(CACHE_TS_KEY, Date.now());
+}
+
+function applyRules(content) {
+    syncedSet = new Set(parseRules(content));
+    rebuildSyncedStyle();
+}
+
+function loadEffectiveRules() {
+    applyRules(gmGet(CACHE_KEY, ""));
+}
+
+function refreshIfStale() {
+    if (Date.now() - gmGet(CACHE_TS_KEY, 0) < CACHE_TTL_MS) return;
+    gmXhr({
+        method: "GET",
+        url: RAW_URL,
+        onload: function (res) {
+            if (res.status >= 200 && res.status < 300) {
+                cacheRules(res.responseText);
+                applyRules(res.responseText); // use fetched content directly; storage may be a no-op
+            }
+        },
+    });
+}
+
+/* ---------- synced hides (reversible: one rebuildable <style>) ---------- */
+
+let syncedStyleEl = null;
+
+function rebuildSyncedStyle() {
+    if (!syncedStyleEl) {
+        syncedStyleEl = document.createElement("style");
+        syncedStyleEl.id = "ennicen-synced-hide";
+        document.head.appendChild(syncedStyleEl);
+    }
+    const selectors = [...syncedSet];
+    syncedStyleEl.textContent = selectors.length ? selectors.join(",\n") + " { display: none !important; }" : "";
+}
+
+/* ---------- GitHub API (write path) ---------- */
+
+function ghApi(method, body, cb) {
+    gmXhr({
+        method: method,
+        url: API_URL,
+        headers: {
+            "Authorization": "Bearer " + getToken(),
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+        },
+        data: body ? JSON.stringify(body) : undefined,
+        onload: function (res) {
+            if (res.status >= 200 && res.status < 300) {
+                try { cb(null, JSON.parse(res.responseText)); }
+                catch (e) { cb(new Error("bad JSON from GitHub")); }
+            } else {
+                cb(new Error("GitHub " + res.status));
+            }
+        },
+        onerror: function () { cb(new Error("network error")); },
+    });
+}
+
+// UTF-8-safe base64 (GET ships file bodies base64-encoded with newlines every
+// 60 chars that must be stripped before decode).
+function b64encode(str) { return btoa(unescape(encodeURIComponent(str))); }
+function b64decode(b64) { return decodeURIComponent(escape(atob(b64.replace(/\n/g, "")))); }
+
+// GET authoritative content+sha -> transform -> PUT with a commit message.
+// transform returns null to skip the write. The PUT's optimistic-concurrency sha
+// guards against clobbering a write from another device between GET and PUT.
+function mutateRules(message, transform, cb) {
+    ghApi("GET", null, function (err, file) {
+        if (err) return cb(err);
+        const content = file && file.content ? b64decode(file.content) : "";
+        const newContent = transform(content);
+        if (newContent === null) return cb(null);
+        const body = {
+            message: message,
+            content: b64encode(newContent),
+            branch: BRANCH,
+        };
+        if (file && file.sha) body.sha = file.sha; // omit only when creating the file
+        ghApi("PUT", body, function (err2) {
+            if (err2) return cb(err2);
+            cacheRules(newContent);
+            cb(null);
+        });
+    });
+}
+
+function appendRule(selector, cb) {
+    mutateRules("rules.txt: Add " + selector, function (content) {
+        if (parseRules(content).includes(selector)) return null; // already present
+        const lines = content.replace(/\n+$/, "").split("\n");
+        lines.push(selector);
+        return lines.join("\n") + "\n";
+    }, cb);
+}
+
+function removeRule(selector, cb) {
+    mutateRules("rules.txt: Remove " + selector, function (content) {
+        return content.split("\n").filter(function (line) {
+            return line.replace(/#.*$/, "").trim() !== selector;
+        }).join("\n");
+    }, cb);
+}
+
+/* ---------- mute / unmute ---------- */
+
+function muteSelector(selector) {
+    if (!selector || syncedSet.has(selector)) return;
+    syncedSet.add(selector);   // optimistic
+    rebuildSyncedStyle();
+    hideAffordance();
+    appendRule(selector, function (err) {
+        if (err) {
+            syncedSet.delete(selector); // revert: not actually synced
+            rebuildSyncedStyle();
+            showToast("⚠ couldn't mute " + selector + ": " + err.message);
+        } else {
+            showToast("Muted " + selector, "undo", function () { unmuteSelector(selector); });
+        }
+    });
+}
+
+function unmuteSelector(selector) {
+    removeRule(selector, function (err) {
+        if (err) { showToast("⚠ couldn't restore " + selector + ": " + err.message); return; }
+        syncedSet.delete(selector);
+        rebuildSyncedStyle();
+        showToast("Restored " + selector);
+    });
+}
+
+/* ---------- durable selector generation ----------
+ * The Guardian's dcr- and css- class names are per-deploy hashes — useless as
+ * rules. Walk up from the clicked node and emit the FIRST selector built from a
+ * stable hook: <gu-island name>, id, or a data-* attribute, else a non-hashed
+ * class. Returns null if nothing stable is in reach. */
+
+function cssAttrVal(v) { return v.replace(/\\/g, "\\\\").replace(/'/g, "\\'"); }
+function isStableClass(c) { return c && !/^dcr-/.test(c) && !/^css-/.test(c) && !/^sc-/.test(c); }
+
+function stableSelectorFor(el) {
+    if (!el || !el.tagName) return null;
+    const tag = el.tagName.toLowerCase();
+    if (tag === "gu-island") {
+        const n = el.getAttribute("name");
+        if (n) return `gu-island[name='${cssAttrVal(n)}']`;
+    }
+    if (el.id) return `${tag}#${CSS.escape(el.id)}`;
+    for (const a of ["data-component", "data-gu-name", "data-spacefinder-type", "data-link-name"]) {
+        const v = el.getAttribute(a);
+        if (v) return `${tag}[${a}='${cssAttrVal(v)}']`;
+    }
+    const cls = [].filter.call(el.classList, isStableClass);
+    if (cls.length) return `${tag}.${cls.map(CSS.escape).join(".")}`;
+    return null;
+}
+
+function isLargeEnough(el) {
+    const r = el.getBoundingClientRect();
+    return r.width >= 200 && r.height >= 60;
+}
+
+// Nearest ancestor (incl. self) that is both stably-selectable and a large block.
+function findCandidate(start) {
+    let el = start;
+    for (let d = 0; el && el !== document.body && d < 14; d++, el = el.parentElement) {
+        if (el === muteBtn || el === highlightEl) continue;
+        const sel = stableSelectorFor(el);
+        if (sel && isLargeEnough(el)) return { el: el, sel: sel };
+    }
+    return null;
+}
+
+/* ---------- hover affordance: highlight + floating [mute] pill ---------- */
+
+let highlightEl = null, muteBtn = null;
+let currentSelector = null, hideTimer = null, rafPending = false;
+
+function ensureAffordance() {
+    if (highlightEl) return;
+    highlightEl = document.createElement("div");
+    highlightEl.style.cssText = "position:fixed;z-index:2147483646;pointer-events:none;" +
+        "border:2px solid #c70000;background:rgba(199,0,0,.12);box-sizing:border-box;display:none;";
+    document.body.appendChild(highlightEl);
+
+    muteBtn = document.createElement("button");
+    muteBtn.textContent = "✕ mute";
+    muteBtn.style.cssText = "position:fixed;z-index:2147483647;display:none;cursor:pointer;" +
+        "background:#c70000;color:#fff;border:none;border-radius:4px;padding:3px 8px;" +
+        "font:bold 12px/1 sans-serif;box-shadow:0 1px 4px rgba(0,0,0,.4);";
+    muteBtn.addEventListener("click", function (e) {
+        e.preventDefault(); e.stopPropagation();
+        muteSelector(currentSelector);
+    });
+    document.body.appendChild(muteBtn);
+}
+
+function showAffordanceFor(el, sel) {
+    clearTimeout(hideTimer);
+    currentSelector = sel;
+    const r = el.getBoundingClientRect();
+    highlightEl.style.top = r.top + "px";
+    highlightEl.style.left = r.left + "px";
+    highlightEl.style.width = r.width + "px";
+    highlightEl.style.height = r.height + "px";
+    highlightEl.style.display = "block";
+    muteBtn.style.top = Math.max(2, r.top + 4) + "px";
+    muteBtn.style.left = (r.right - 70) + "px";
+    muteBtn.style.display = "block";
+    muteBtn.title = "Mute " + sel;
+}
+
+function hideAffordance() {
+    if (!highlightEl) return;
+    highlightEl.style.display = "none";
+    muteBtn.style.display = "none";
+    currentSelector = null;
+}
+
+function onMouseMove(e) {
+    if (e.target === muteBtn) return; // hovering the pill itself: keep current
+    if (rafPending) return;
+    rafPending = true;
+    const target = e.target;
+    requestAnimationFrame(function () {
+        rafPending = false;
+        const cand = findCandidate(target);
+        if (cand) showAffordanceFor(cand.el, cand.sel);
+        else { clearTimeout(hideTimer); hideTimer = setTimeout(hideAffordance, 150); }
+    });
+}
+
+function onScrollOrResize() { hideAffordance(); } // rects go stale on scroll; reappears on next move
+
+function enableHoverMute() {
+    if (!canWrite()) return;
+    ensureAffordance();
+    document.addEventListener("mousemove", onMouseMove, true);
+    window.addEventListener("scroll", onScrollOrResize, true);
+    window.addEventListener("resize", onScrollOrResize, true);
+}
+
+function disableHoverMute() {
+    document.removeEventListener("mousemove", onMouseMove, true);
+    window.removeEventListener("scroll", onScrollOrResize, true);
+    window.removeEventListener("resize", onScrollOrResize, true);
+    hideAffordance();
+}
+
+/* ---------- toast / undo ---------- */
+
+let toastEl = null, toastTimer = null;
+
+function showToast(msg, actionLabel, actionFn) {
+    if (!toastEl) {
+        toastEl = document.createElement("div");
+        toastEl.style.cssText = "position:fixed;left:50%;bottom:24px;transform:translateX(-50%);" +
+            "z-index:2147483647;background:#222;color:#fff;padding:10px 14px;border-radius:6px;" +
+            "font:14px/1.3 sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.4);max-width:90vw;";
+        document.body.appendChild(toastEl);
+    }
+    toastEl.textContent = msg + " ";
+    if (actionLabel && actionFn) {
+        const a = document.createElement("a");
+        a.textContent = actionLabel;
+        a.href = "javascript:void(0)";
+        a.style.cssText = "color:#6cf;margin-left:8px;cursor:pointer;font-weight:bold;";
+        a.addEventListener("click", function (e) { e.preventDefault(); hideToast(); actionFn(); });
+        toastEl.appendChild(a);
+    }
+    toastEl.style.display = "block";
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(hideToast, 6000);
+}
+
+function hideToast() { if (toastEl) toastEl.style.display = "none"; }
+
+/* ---------- menu commands ---------- */
+
+function registerMenu(label, fn) {
+    if (typeof GM_registerMenuCommand === "function") GM_registerMenuCommand(label, fn);
+}
+
+registerMenu("Set GitHub token…", function () {
+    const t = prompt("Fine-grained PAT, scoped to this repo's Contents: read/write ONLY. Blank to clear:", getToken());
+    if (t === null) return;
+    const trimmed = t.trim();
+    if (!trimmed) { gmDelete(TOKEN_KEY); disableHoverMute(); alert("Token cleared. Mute pill hidden on this device."); return; }
+    gmSet(TOKEN_KEY, trimmed);
+    ghApi("GET", null, function (err, file) { // validate at entry, not every page load
+        if (err) { alert("⚠ Token saved but validation failed: " + err.message); return; }
+        const ok = file && file.content;
+        if (ok) { enableHoverMute(); alert("Token works. Hover a block to see the mute pill."); }
+        else alert("Token works, but '" + RULES_FILENAME + "' isn't in the repo yet — create it first.");
+    });
+});
+
+registerMenu("Toggle hover-mute pill", function () {
+    const next = !hoverMuteEnabled();
+    gmSet(HOVER_KEY, next);
+    if (next) { enableHoverMute(); alert("Hover-mute pill ON."); }
+    else { disableHoverMute(); alert("Hover-mute pill OFF."); }
+});
+
+/* ---------- static, hand-curated hides + boring-topic filtering ---------- */
+
+(function staticHides() {
     'use strict';
     console.log("Hi Guardian");
     GM_addStyle(paul_hide);
@@ -99,6 +485,10 @@ function GM_addStyle(css) {
     document.querySelectorAll(`gu-island[name='InteractiveBlockComponent']`).forEach(element => {
         element.classList.add("paul_hide");
     });
-
-
 })();
+
+/* ---------- boot ---------- */
+
+loadEffectiveRules();   // synchronous, from cache: hide immediately, no flash
+refreshIfStale();       // async: pull latest rules.txt, re-apply
+if (canWrite() && hoverMuteEnabled()) enableHoverMute();

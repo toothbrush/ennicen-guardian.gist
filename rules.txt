@@ -1,0 +1,5 @@
+# ennicen-guardian synced cosmetic rules — one CSS selector per line.
+# Appended by the userscript's "Zap an element…" picker (each zap is a commit here).
+# Read by every device (unauthenticated, via raw.github); only devices with a
+# GitHub token can append. Each selector is hidden with `display: none`.
+# `# ...` is an inline comment and is stripped before use.
