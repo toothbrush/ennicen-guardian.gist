@@ -3,7 +3,7 @@
 // @namespace    https://github.com/toothbrush/ennicen-guardian.gist
 // @updateURL    https://raw.githack.com/toothbrush/ennicen-guardian.gist/main/ennicen-guardian.user.js
 // @downloadURL  https://raw.githack.com/toothbrush/ennicen-guardian.gist/main/ennicen-guardian.user.js
-// @version      0.26
+// @version      0.27
 // @description  block junk
 // @author       toothbrush
 // @match        https://www.theguardian.com/*
@@ -736,7 +736,7 @@ registerMenu("Toggle zapper (⌥ to zap)", function () {
 
 /* ---------- boot ---------- */
 
-console.log("[ennicen] boot v0.26 · " +
+console.log("[ennicen] boot v0.27 · " +
     "GM_addStyle styleEl=" + !!document.getElementById("GM_addStyleBy8626") + " · " +
     "GM_getValue=" + (typeof GM_getValue === "function") + " · " +
     "GM_xmlhttpRequest=" + (typeof GM_xmlhttpRequest === "function") + " · " +
