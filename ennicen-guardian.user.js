@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         ennicen-guardian
 // @namespace    https://github.com/toothbrush/ennicen-guardian.gist
-// @updateURL    https://raw.githubusercontent.com/toothbrush/ennicen-guardian.gist/main/ennicen-guardian.user.js
-// @downloadURL  https://raw.githubusercontent.com/toothbrush/ennicen-guardian.gist/main/ennicen-guardian.user.js
-// @version      0.18
+// @updateURL    https://raw.githack.com/toothbrush/ennicen-guardian.gist/main/ennicen-guardian.user.js
+// @downloadURL  https://raw.githack.com/toothbrush/ennicen-guardian.gist/main/ennicen-guardian.user.js
+// @version      0.19
 // @description  block junk
 // @author       toothbrush
 // @match        https://www.theguardian.com/*
