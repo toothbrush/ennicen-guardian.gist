@@ -34,3 +34,4 @@ div#expander-5480186\ form
 div#discussion-overlay
 keep: div#article
 gu-island[name='MostViewedRightWithAd']
+div[data-gu-name='right-column']
