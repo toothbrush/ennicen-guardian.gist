@@ -30,3 +30,4 @@ boring: \bWorld Cup\b
 div[data-link-name='more-on-this-story']
 keep: div#container-news
 section#more-sport
+div#expander-5480186\ form
