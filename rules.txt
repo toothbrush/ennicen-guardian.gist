@@ -28,3 +28,4 @@ boring: \bfootball\b
 boring: \bfootballer\b
 boring: \bWorld Cup\b
 div[data-link-name='more-on-this-story']
+keep: div#container-news
