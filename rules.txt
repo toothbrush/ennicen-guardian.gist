@@ -33,3 +33,4 @@ section#more-sport
 div#expander-5480186\ form
 div#discussion-overlay
 keep: div#article
+gu-island[name='MostViewedRightWithAd']
