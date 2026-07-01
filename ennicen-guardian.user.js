@@ -741,7 +741,10 @@ registerMenu("Toggle zapper (⌥ to zap)", function () {
 
 /* ---------- boot ---------- */
 
-console.log("[ennicen] boot v0.28 · " +
+// Prefer the metadata version (GM_info); fall back to a literal for hosts that
+// don't expose it (e.g. some iOS setups). Keep the literal in sync with @version.
+const VERSION = (typeof GM_info !== "undefined" && GM_info.script && GM_info.script.version) || "0.28";
+console.log("[ennicen] boot v" + VERSION + " · " +
     "GM_addStyle styleEl=" + !!document.getElementById("GM_addStyleBy8626") + " · " +
     "GM_getValue=" + (typeof GM_getValue === "function") + " · " +
     "GM_xmlhttpRequest=" + (typeof GM_xmlhttpRequest === "function") + " · " +
