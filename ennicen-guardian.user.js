@@ -3,7 +3,7 @@
 // @namespace    https://github.com/toothbrush/ennicen-guardian.gist
 // @updateURL    https://raw.githack.com/toothbrush/ennicen-guardian.gist/main/ennicen-guardian.user.js
 // @downloadURL  https://raw.githack.com/toothbrush/ennicen-guardian.gist/main/ennicen-guardian.user.js
-// @version      0.29
+// @version      0.30
 // @description  block junk
 // @author       toothbrush
 // @match        https://www.theguardian.com/*
@@ -151,15 +151,22 @@ function compileBoring(sources) {
 // it's safe to re-run on every rules apply (cache load + async refresh).
 function applyBoringFilter() {
     if (!boringList.length) return;
-    const cards = document.getElementsByClassName("fc-item__container");
-    [].forEach.call(cards, function (thing) {
-        const title = (thing.innerText || thing.textContent);
-        const is_boring = boringList.some(function (topic) { return topic.test(title); });
-        if (is_boring) {
+    const isBoring = function (text) {
+        return !!text && boringList.some(function (topic) { return topic.test(text); });
+    };
+    // Old-frontend markup: the whole card is one .fc-item__container.
+    [].forEach.call(document.getElementsByClassName("fc-item__container"), function (thing) {
+        if (isBoring(thing.innerText || thing.textContent)) {
             thing.classList.add("paul_hide");
             thing.parentNode.style.backgroundColor = "blue";
             thing.parentNode.style.opacity = 0;
         }
+    });
+    // DCR markup: only the headline (kicker + text) carries a stable class; the
+    // enclosing <li> is the whole card (or sublink row), so hide that instead.
+    [].forEach.call(document.querySelectorAll(".card-headline, .card-sublink-headline"), function (h) {
+        if (!isBoring(h.innerText || h.textContent)) return;
+        (h.closest("li") || h).style.setProperty("display", "none", "important");
     });
 }
 
