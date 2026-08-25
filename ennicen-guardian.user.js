@@ -3,7 +3,7 @@
 // @namespace    https://github.com/toothbrush/ennicen-guardian.gist
 // @updateURL    https://raw.githack.com/toothbrush/ennicen-guardian.gist/main/ennicen-guardian.user.js
 // @downloadURL  https://raw.githack.com/toothbrush/ennicen-guardian.gist/main/ennicen-guardian.user.js
-// @version      0.30
+// @version      0.31
 // @description  block junk
 // @author       toothbrush
 // @match        https://www.theguardian.com/*
@@ -442,6 +442,9 @@ let highlightEl = null, muteBtn = null, keepBtn = null, muteName = null, keepNam
 let currentSelector = null, currentTargetEl = null, hideTimer = null, rafPending = false;
 let lastX = -1, lastY = -1;
 
+// Marks our own overlays so pixeltimes leaves them in a smooth font.
+const IGNORE_CLASS = "pixelfont-ignore";
+
 function pillStyle(bg) {
     return "position:fixed;z-index:2147483647;display:none;cursor:pointer;color:#fff;border:none;" +
         "border-radius:4px;padding:4px 8px;font:bold 12px/1.3 sans-serif;text-align:center;" +
@@ -451,6 +454,7 @@ function pillStyle(bg) {
 // Build a pill with a fixed label line and a second line for the selector name.
 function buildPill(label, bg, onClick) {
     const btn = document.createElement("button");
+    btn.classList.add(IGNORE_CLASS);
     btn.style.cssText = pillStyle(bg);
     btn.appendChild(document.createTextNode(label));
     btn.appendChild(document.createElement("br"));
@@ -465,6 +469,7 @@ function buildPill(label, bg, onClick) {
 function ensureAffordance() {
     if (highlightEl) return;
     highlightEl = document.createElement("div");
+    highlightEl.classList.add(IGNORE_CLASS);
     highlightEl.style.cssText = "position:fixed;z-index:2147483646;pointer-events:none;" +
         "border:2px solid #c70000;background:rgba(199,0,0,.12);box-sizing:border-box;display:none;";
     document.body.appendChild(highlightEl);
@@ -480,6 +485,7 @@ function ensureAffordance() {
 function ensureBadge() {
     if (badgeEl) return;
     badgeEl = document.createElement("div");
+    badgeEl.classList.add(IGNORE_CLASS);
     badgeEl.textContent = "ennicen-guardian active · hold ⌥ to zap";
     badgeEl.style.cssText = "position:fixed;top:8px;left:8px;z-index:2147483640;pointer-events:none;" +
         "background:rgba(0,0,0,.45);color:#fff;padding:6px 9px;border-radius:6px;" +
@@ -625,6 +631,7 @@ let toastEl = null, toastTimer = null;
 function showToast(msg, actionLabel, actionFn) {
     if (!toastEl) {
         toastEl = document.createElement("div");
+        toastEl.classList.add(IGNORE_CLASS);
         toastEl.style.cssText = "position:fixed;left:50%;bottom:24px;transform:translateX(-50%);" +
             "z-index:2147483647;background:#222;color:#fff;padding:10px 14px;border-radius:6px;" +
             "font:14px/1.3 sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.4);max-width:90vw;";
@@ -656,6 +663,7 @@ var debugEl = null; // var, not let: showDebug is hoisted and may run from the e
 function showDebug(msg) {
     if (!debugEl) {
         debugEl = document.createElement("div");
+        debugEl.classList.add(IGNORE_CLASS);
         debugEl.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:2147483647;" +
             "background:#b00020;color:#fff;padding:10px 14px;" +
             "font:bold 13px/1.4 -apple-system,sans-serif;text-align:center;cursor:pointer;" +
