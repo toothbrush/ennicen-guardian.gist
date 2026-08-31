@@ -36,3 +36,4 @@ keep: div#article
 gu-island[name='MostViewedRightWithAd']
 div[data-gu-name='right-column']
 div#\36 451555
+aside[data-gu-name='meta']
