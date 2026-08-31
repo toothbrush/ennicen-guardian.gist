@@ -39,3 +39,4 @@ div#\36 451555
 aside[data-gu-name='meta']
 aside[data-gu-name='title']
 aside[data-gu-name='pullquote']
+div[data-component='rich-link']
