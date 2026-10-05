@@ -3,7 +3,7 @@
 // @namespace    https://github.com/toothbrush/ennicen-guardian.gist
 // @updateURL    https://raw.githack.com/toothbrush/ennicen-guardian.gist/main/ennicen-guardian.user.js
 // @downloadURL  https://raw.githack.com/toothbrush/ennicen-guardian.gist/main/ennicen-guardian.user.js
-// @version      0.36
+// @version      0.37
 // @description  block junk
 // @author       toothbrush
 // @match        https://www.theguardian.com/*
@@ -497,8 +497,10 @@ registerMenu("Toggle zapper (⌥ to zap)", function () {
     // Synthesised dark mode: the site ships light-only CSS. Inverting <html>
     // keeps fixed-position pills working; media is inverted back. The root
     // background is inverted too, so #fff renders black.
-    GM_addStyle("@media (prefers-color-scheme: dark) { html { filter: invert(1) hue-rotate(180deg); background: #fff; } }");
-    GM_addStyle("@media (prefers-color-scheme: dark) { img, picture, video, iframe { filter: invert(1) hue-rotate(180deg); } }");
+    // The site pins color-scheme: light on :root; widen it so WebKit has no
+    // reason to treat the page as light-only.
+    GM_addStyle("@media (prefers-color-scheme: dark) { html { filter: invert(1) hue-rotate(180deg) !important; background: #fff !important; color-scheme: light dark !important; } }");
+    GM_addStyle("@media (prefers-color-scheme: dark) { img, picture, video, iframe { filter: invert(1) hue-rotate(180deg) !important; } }");
     GM_addStyle(paul_hide);
     GM_addStyle("#sport { display: none; }");
     GM_addStyle(".morning-mail-thrasher__layout { display: none; }");
