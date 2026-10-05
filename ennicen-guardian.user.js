@@ -3,7 +3,7 @@
 // @namespace    https://github.com/toothbrush/ennicen-guardian.gist
 // @updateURL    https://raw.githack.com/toothbrush/ennicen-guardian.gist/main/ennicen-guardian.user.js
 // @downloadURL  https://raw.githack.com/toothbrush/ennicen-guardian.gist/main/ennicen-guardian.user.js
-// @version      0.34
+// @version      0.35
 // @description  block junk
 // @author       toothbrush
 // @match        https://www.theguardian.com/*
@@ -494,8 +494,9 @@ registerMenu("Toggle zapper (⌥ to zap)", function () {
     // Visible is-it-running indicator: periwinkle page background whenever active.
     GM_addStyle("body { background-color: #CCCCFF !important; }");
     // Synthesised dark mode: the site ships light-only CSS. Inverting <html>
-    // keeps fixed-position pills working; media is inverted back.
-    GM_addStyle("@media (prefers-color-scheme: dark) { html { filter: invert(1) hue-rotate(180deg); background: #000; } }");
+    // keeps fixed-position pills working; media is inverted back. The root
+    // background is inverted too, so #fff renders black.
+    GM_addStyle("@media (prefers-color-scheme: dark) { html { filter: invert(1) hue-rotate(180deg); background: #fff; } }");
     GM_addStyle("@media (prefers-color-scheme: dark) { img, picture, video, iframe { filter: invert(1) hue-rotate(180deg); } }");
     GM_addStyle(paul_hide);
     GM_addStyle("#sport { display: none; }");
