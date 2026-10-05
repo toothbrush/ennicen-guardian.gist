@@ -3,7 +3,7 @@
 // @namespace    https://github.com/toothbrush/ennicen-guardian.gist
 // @updateURL    https://raw.githack.com/toothbrush/ennicen-guardian.gist/main/ennicen-guardian.user.js
 // @downloadURL  https://raw.githack.com/toothbrush/ennicen-guardian.gist/main/ennicen-guardian.user.js
-// @version      0.31
+// @version      0.32
 // @description  block junk
 // @author       toothbrush
 // @match        https://www.theguardian.com/*
@@ -16,6 +16,7 @@
 // @grant        GM.xmlHttpRequest
 // @connect      api.github.com
 // @connect      raw.githubusercontent.com
+// @require      https://raw.githubusercontent.com/toothbrush/userscript-lib.gist/v2/synced-list.js
 // @run-at       document-idle
 // ==/UserScript==
 
@@ -40,17 +41,17 @@
  * Mobile stays read-only (no token there).
  */
 
-const REPO = "toothbrush/ennicen-guardian.gist";
-const BRANCH = "main";
-const RULES_FILENAME = "rules.txt";
-const RAW_URL = `https://raw.githubusercontent.com/${REPO}/${BRANCH}/${RULES_FILENAME}`;
-const API_URL = `https://api.github.com/repos/${REPO}/contents/${RULES_FILENAME}`;
-const CACHE_TTL_MS = 5 * 60 * 1000;
-
-const TOKEN_KEY = "gh_gist_token";
+// rules.txt lives in this repo. synced-list.js (shared with BOW-killfile,
+// loaded with @require, pinned to a tag) does the raw.github read, the
+// Contents API write, the GM shims, the toast and the token menu.
+const rules = new SyncedFile({
+    repo: "toothbrush/ennicen-guardian.gist",
+    file: "rules.txt",
+    cacheKey: "rules_cache",    // the keys older versions used, so a device keeps its cache
+    tokenKey: "gh_gist_token",  // and its token across the move to the library
+    tag: "ennicen",
+});
 const HOVER_KEY = "hover_mute_enabled";
-const CACHE_KEY = "rules_cache";
-const CACHE_TS_KEY = "rules_cache_ts";
 
 let syncedSet = new Set();
 let keepSet = new Set();   // selectors the picker should stop offering ("keep" pill)
@@ -73,49 +74,10 @@ function GM_addStyle(css) {
   sheet.insertRule(css, (sheet.rules || sheet.cssRules || []).length);
 }
 
-/* ---------- GM API shims ----------
- * Hosts vary in which GM_* APIs they expose. iOS Safari "Userscripts" provides
- * GM[_.]xmlhttpRequest but NOT the sync GM_* storage/menu APIs. These wrappers
- * degrade gracefully: a missing storage API just means "no persistent cache on
- * this device" (each load re-fetches) rather than a ReferenceError that aborts
- * the whole script. Callers must tolerate a storage miss — see refreshIfStale,
- * which applies fetched content directly instead of re-reading.
- *
- * Net effect on a token-less client (e.g. iOS): the read path below still fetches
- * and applies rules.txt, while the write path (zapper + badge) stays dormant
- * because it is gated behind canWrite(). So such a device just evaluates the
- * blocklist, which is all it needs to do.
- */
-
-function gmGet(key, def) {
-    try { if (typeof GM_getValue === "function") return GM_getValue(key, def); } catch (e) {}
-    return def;
-}
-function gmSet(key, val) {
-    try { if (typeof GM_setValue === "function") GM_setValue(key, val); } catch (e) {}
-}
-function gmDelete(key) {
-    try { if (typeof GM_deleteValue === "function") GM_deleteValue(key); } catch (e) {}
-}
-function gmXhr(details) {
-    if (typeof GM_xmlhttpRequest === "function") return GM_xmlhttpRequest(details);
-    if (typeof GM !== "undefined" && GM && GM.xmlHttpRequest) return GM.xmlHttpRequest(details);
-    return null;
-}
-
-function getToken() { return gmGet(TOKEN_KEY, ""); }
-function canWrite() { return !!getToken(); }
+function canWrite() { return rules.canWrite(); }
 function hoverMuteEnabled() { return gmGet(HOVER_KEY, true); }
 
 /* ---------- rules file: parse / cache / apply ---------- */
-
-// Strip a `# comment` without eating the `#` in id selectors (`section#news`).
-// A comment is the whole line (leading #) or follows whitespace; selectors here
-// are single compound selectors, so a bare `tag#id` is never mistaken for one.
-function stripComment(raw) {
-    if (/^\s*#/.test(raw)) return "";
-    return raw.replace(/\s+#.*$/, "").trim();
-}
 
 // Returns { mute, keep, boring }. A bare selector is a hide rule; `keep: <selector>`
 // marks a selector the picker should stop offering; `boring: <regex>` is a headline
@@ -131,11 +93,6 @@ function parseRules(text) {
         else mute.push(line);
     });
     return { mute: mute, keep: keep, boring: boring };
-}
-
-function cacheRules(content) {
-    gmSet(CACHE_KEY, content);
-    gmSet(CACHE_TS_KEY, Date.now());
 }
 
 function compileBoring(sources) {
@@ -179,47 +136,8 @@ function applyRules(content) {
     applyBoringFilter();
 }
 
-function loadEffectiveRules() {
-    applyRules(gmGet(CACHE_KEY, ""));
-}
-
-function refreshIfStale() {
-    if (Date.now() - gmGet(CACHE_TS_KEY, 0) < CACHE_TTL_MS) return;
-    // raw.github caches ~5 min; a changing query param is a fresh CDN key, so we
-    // get current rules instead of a stale copy (we already rate-limit via TTL above).
-    const url = RAW_URL + "?t=" + Date.now();
-    const handle = gmXhr({
-        method: "GET",
-        url: url,
-        onload: function (res) {
-            console.log("[ennicen] rules fetch HTTP " + res.status + " (" +
-                (res.responseText ? res.responseText.length : 0) + " bytes)");
-            if (res.status >= 200 && res.status < 300) {
-                cacheRules(res.responseText);
-                applyRules(res.responseText); // use fetched content directly; storage may be a no-op
-                console.log("[ennicen] applied " + syncedSet.size + " mute / " + keepSet.size + " keep / " + boringList.length + " boring rules");
-            } else {
-                console.warn("[ennicen] rules fetch non-2xx, rules NOT applied");
-                showDebug("rules.txt fetch failed (HTTP " + res.status + ") — synced rules not applied");
-            }
-        },
-        onerror: function (res) {
-            console.warn("[ennicen] rules fetch errored (status " + (res && res.status) +
-                ", " + (res && res.error) + ") — likely a missing @connect host or blocked GM XHR");
-            showDebug("rules.txt fetch errored (status " + (res && res.status) +
-                ") — check @connect / GM XHR permission");
-        },
-        ontimeout: function () {
-            console.warn("[ennicen] rules fetch timed out");
-            showDebug("rules.txt fetch timed out");
-        },
-    });
-    if (!handle) {
-        console.warn("[ennicen] no GM XHR available (GM_xmlhttpRequest / GM.xmlHttpRequest both missing) — " +
-            "synced rules.txt cannot be fetched on this device");
-        showDebug("no GM XHR available — can't fetch synced rules.txt on this device");
-    }
-}
+// A fetch that fails shows on the page: there may be no console on this device.
+rules.onError = function (msg) { showDebug(msg); };
 
 /* ---------- synced hides (reversible: one rebuildable <style>) ---------- */
 
@@ -240,109 +158,16 @@ function rebuildSyncedStyle() {
         .join("\n");
 }
 
-/* ---------- GitHub API (write path) ---------- */
+/* ---------- rules.txt edits: one commit each, via the library ---------- */
 
-function ghApi(method, body, cb) {
-    // The contents API ships Cache-Control: max-age=60, so a read within ~60s of
-    // a write can return stale content+sha — which makes the dedupe guard miss
-    // and double-adds the rule (and yields a stale sha → 409). Bust the cache on
-    // reads. Writes (PUT) aren't cached.
-    const url = method === "GET" ? `${API_URL}?ref=${BRANCH}&t=${Date.now()}` : API_URL;
-    gmXhr({
-        method: method,
-        url: url,
-        headers: {
-            "Authorization": "Bearer " + getToken(),
-            "Accept": "application/vnd.github+json",
-            "X-GitHub-Api-Version": "2022-11-28",
-        },
-        data: body ? JSON.stringify(body) : undefined,
-        onload: function (res) {
-            if (res.status >= 200 && res.status < 300) {
-                try { cb(null, JSON.parse(res.responseText)); }
-                catch (e) { cb(new Error("bad JSON from GitHub")); }
-            } else {
-                const e = new Error("GitHub " + res.status);
-                e.status = res.status;
-                cb(e);
-            }
-        },
-        onerror: function () { cb(new Error("network error")); },
-    });
-}
-
-// UTF-8-safe base64 (GET ships file bodies base64-encoded with newlines every
-// 60 chars that must be stripped before decode).
-function b64encode(str) { return btoa(unescape(encodeURIComponent(str))); }
-function b64decode(b64) { return decodeURIComponent(escape(atob(b64.replace(/\n/g, "")))); }
-
-// GET authoritative content+sha -> transform -> PUT with a commit message.
-// transform returns null to skip the write. The PUT's optimistic-concurrency sha
-// guards against clobbering a write from another device between GET and PUT; a
-// 409 means our sha went stale (a concurrent write landed), so we re-GET and
-// re-run the transform against fresh content rather than clobber it.
-const MUTATE_MAX_RETRIES = 4;
-function mutateRules(message, transform, cb, attempt) {
-    attempt = attempt || 0;
-    ghApi("GET", null, function (err, file) {
-        if (err) return cb(err);
-        const content = file && file.content ? b64decode(file.content) : "";
-        const newContent = transform(content);
-        if (newContent === null) return cb(null);
-        const body = {
-            message: message,
-            content: b64encode(newContent),
-            branch: BRANCH,
-        };
-        if (file && file.sha) body.sha = file.sha; // omit only when creating the file
-        ghApi("PUT", body, function (err2) {
-            if (err2) {
-                if (err2.status === 409 && attempt < MUTATE_MAX_RETRIES) {
-                    setTimeout(function () { mutateRules(message, transform, cb, attempt + 1); }, 250 * (attempt + 1));
-                    return;
-                }
-                return cb(err2);
-            }
-            cacheRules(newContent);
-            cb(null);
-        });
-    });
-}
-
-function appendRule(selector, cb) {
-    mutateRules("rules.txt: Add " + selector, function (content) {
-        if (parseRules(content).mute.includes(selector)) return null; // already present
-        const lines = content.replace(/\n+$/, "").split("\n");
-        lines.push(selector);
-        return lines.join("\n") + "\n";
-    }, cb);
-}
-
-function removeRule(selector, cb) {
-    mutateRules("rules.txt: Remove " + selector, function (content) {
-        return content.split("\n").filter(function (line) {
-            return stripComment(line) !== selector;
-        }).join("\n");
-    }, cb);
-}
-
-function appendKeep(selector, cb) {
-    const entry = "keep: " + selector;
-    mutateRules("rules.txt: Keep " + selector, function (content) {
-        if (parseRules(content).keep.includes(selector)) return null; // already kept
-        const lines = content.replace(/\n+$/, "").split("\n");
-        lines.push(entry);
-        return lines.join("\n") + "\n";
-    }, cb);
-}
-
+function appendRule(selector, cb) { rules.appendLine(selector, "rules.txt: Add " + selector, cb); }
+function removeRule(selector, cb) { rules.removeLine(selector, "rules.txt: Remove " + selector, cb); }
+function appendKeep(selector, cb) { rules.appendLine("keep: " + selector, "rules.txt: Keep " + selector, cb); }
 function removeKeep(selector, cb) {
-    mutateRules("rules.txt: Unkeep " + selector, function (content) {
-        return content.split("\n").filter(function (line) {
-            const m = stripComment(line).match(/^keep:\s*(.+)$/);
-            return !(m && m[1].trim() === selector);
-        }).join("\n");
-    }, cb);
+    rules.removeLine(function (line) {
+        const m = line.match(/^keep:\s*(.+)$/);
+        return !!m && m[1].trim() === selector;
+    }, "rules.txt: Unkeep " + selector, cb);
 }
 
 /* ---------- mute / unmute ---------- */
@@ -624,35 +449,6 @@ function disableHoverMute() {
     if (badgeEl) badgeEl.style.display = "none";
 }
 
-/* ---------- toast / undo ---------- */
-
-let toastEl = null, toastTimer = null;
-
-function showToast(msg, actionLabel, actionFn) {
-    if (!toastEl) {
-        toastEl = document.createElement("div");
-        toastEl.classList.add(IGNORE_CLASS);
-        toastEl.style.cssText = "position:fixed;left:50%;bottom:24px;transform:translateX(-50%);" +
-            "z-index:2147483647;background:#222;color:#fff;padding:10px 14px;border-radius:6px;" +
-            "font:14px/1.3 sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.4);max-width:90vw;";
-        document.body.appendChild(toastEl);
-    }
-    toastEl.textContent = msg + " ";
-    if (actionLabel && actionFn) {
-        const a = document.createElement("a");
-        a.textContent = actionLabel;
-        a.href = "javascript:void(0)";
-        a.style.cssText = "color:#6cf;margin-left:8px;cursor:pointer;font-weight:bold;";
-        a.addEventListener("click", function (e) { e.preventDefault(); hideToast(); actionFn(); });
-        toastEl.appendChild(a);
-    }
-    toastEl.style.display = "block";
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(hideToast, 6000);
-}
-
-function hideToast() { if (toastEl) toastEl.style.display = "none"; }
-
 /* ---------- on-page debug banner ----------
  * A visible fallback for devices where you can't attach a console (e.g. iOS).
  * Self-contained: builds its own DOM, no GM APIs, so it shows even when the
@@ -677,23 +473,8 @@ function showDebug(msg) {
 
 /* ---------- menu commands ---------- */
 
-function registerMenu(label, fn) {
-    if (typeof GM_registerMenuCommand === "function") GM_registerMenuCommand(label, fn);
-}
-
-registerMenu("Set GitHub token…", function () {
-    const t = prompt("Fine-grained PAT, scoped to this repo's Contents: read/write ONLY. Blank to clear:", getToken());
-    if (t === null) return;
-    const trimmed = t.trim();
-    if (!trimmed) { gmDelete(TOKEN_KEY); disableHoverMute(); alert("Token cleared. Zapper disabled on this device."); return; }
-    gmSet(TOKEN_KEY, trimmed);
-    ghApi("GET", null, function (err, file) { // validate at entry, not every page load
-        if (err) { alert("⚠ Token saved but validation failed: " + err.message); return; }
-        const ok = file && file.content;
-        if (ok) { enableHoverMute(); alert("Token works. Hold ⌥ (Option) over a block to zap it."); }
-        else alert("Token works, but '" + RULES_FILENAME + "' isn't in the repo yet — create it first.");
-    });
-});
+// "Set GitHub token…": the zapper follows the token.
+rules.registerTokenMenu(function () { enableHoverMute(); }, function () { disableHoverMute(); });
 
 registerMenu("Toggle zapper (⌥ to zap)", function () {
     const next = !hoverMuteEnabled();
@@ -768,7 +549,6 @@ console.log("[ennicen] boot v" + VERSION + " · " +
     "GM.xmlHttpRequest=" + (typeof GM !== "undefined" && !!(GM && GM.xmlHttpRequest)) + " · " +
     "canWrite=" + canWrite());
 
-loadEffectiveRules();   // synchronous, from cache: hide immediately, no flash
-refreshIfStale();       // async: pull latest rules.txt, re-apply
+rules.load(applyRules);   // from cache now (no flash), fresh rules.txt when stale
 // Write path only — skipped on a token-less client (e.g. iOS), which read-applies above.
 if (canWrite() && hoverMuteEnabled()) enableHoverMute();
