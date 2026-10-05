@@ -3,7 +3,7 @@
 // @namespace    https://github.com/toothbrush/ennicen-guardian.gist
 // @updateURL    https://raw.githack.com/toothbrush/ennicen-guardian.gist/main/ennicen-guardian.user.js
 // @downloadURL  https://raw.githack.com/toothbrush/ennicen-guardian.gist/main/ennicen-guardian.user.js
-// @version      0.35
+// @version      0.36
 // @description  block junk
 // @author       toothbrush
 // @match        https://www.theguardian.com/*
@@ -19,7 +19,8 @@
 // @grant        GM.xmlHttpRequest
 // @connect      api.github.com
 // @connect      raw.githubusercontent.com
-// @require      https://raw.githubusercontent.com/toothbrush/userscript-lib.gist/v3/synced-list.js
+// @require      https://raw.githubusercontent.com/toothbrush/userscript-lib.gist/v4/synced-list.js
+// @require      https://raw.githubusercontent.com/toothbrush/userscript-lib.gist/v4/no-hscroll.js
 // @run-at       document-idle
 // ==/UserScript==
 
